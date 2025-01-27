@@ -108,10 +108,12 @@ WSGI_APPLICATION = "tms_backend.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.mysql",
+        "ENGINE": "django.db.backends.postgresql",
         "NAME": "tms_db",
-        "USER":"root",
+        "USER":"postgres",
         "PASSWORD":"1234",
+        "HOST":"localhost",
+        "PORT":"5432",
     }
 }
 
@@ -156,13 +158,3 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-# def get_env_variable(var_name):
-#     try:
-#         return os.environ[var_name]
-#     except KeyError:
-#         error_msg = f"Set the {var_name} environment variable"
-#         raise ImproperlyConfigured(error_msg)
-
-# env = environ.Env()
-# environ.Env.read_env()

@@ -62,7 +62,7 @@ class AdminApprovalView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
     
 
-    def patch(self, request, user_id):
+    def post(self, request, user_id):
         try:
             user = User.objects.get(id=user_id, is_pending=True)
         except User.DoesNotExist:
@@ -91,7 +91,7 @@ class AdminApprovalView(APIView):
 
         serializer = AdminApproveSerializer(user, data=request_data, partial=True)
         if serializer.is_valid():
-            serializer.save()
+            # serializer.save()
 
             if action == 'approve':
                 email_subject = "Registration Approved"
@@ -109,7 +109,7 @@ class AdminApprovalView(APIView):
                     "For more details, please contact support.\n\n"
                     "Best regards,\nAdmin Team"
                 )
-                user.delete()
+                
 
             email_sent = send_mail(
                 email_subject,
@@ -119,6 +119,10 @@ class AdminApprovalView(APIView):
             )
 
             if email_sent == 1:
+                if action == "approve":
+                    serializer.save()
+                elif action=="reject":
+                    user.delete()
                 return Response({
                     "message": f"User {action}d successfully, and email sent."
                 }, status=status.HTTP_200_OK)
