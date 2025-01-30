@@ -29,7 +29,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     phone_number = models.CharField(max_length=15)
     role = models.PositiveSmallIntegerField(choices=ROLE_CHOICES,default=1)
     department = models.CharField(max_length=100)
-    is_active = models.BooleanField(default=False)  
+    is_active = models.BooleanField(default=False) 
+    is_deleted=models.BooleanField(default=False) 
     is_pending = models.BooleanField(default=True)  
     created_at = models.DateTimeField(default=now)
     updated_at = models.DateTimeField(auto_now=True)
@@ -42,4 +43,25 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.email
     
+    def deactivate(self):
+        self.is_active = False
+        self.is_deleted = True
+        self.save()
+
+    def activate(self):
+        self.is_active = True
+        self.is_deleted = False
+        self.save()
+    
+class UserStatusHistory(models.Model):
+    STATUS_CHOICES = (
+        ("approve", "Approved"),
+        ("reject", "Rejected"),
+    )
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, related_name="status_history",null=True,blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    rejection_message = models.TextField(blank=True, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)    
   
+    def __str__(self):
+        return self.status

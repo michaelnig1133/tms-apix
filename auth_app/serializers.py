@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User
+from .models import User, UserStatusHistory
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -32,25 +32,35 @@ class AdminApproveSerializer(serializers.ModelSerializer):
         model = User
         fields = ['is_active', 'is_pending','rejection_message']
 
-    def validate_is_active(self, value):
-        if not isinstance(value, bool):
-            raise serializers.ValidationError("The 'is_active' field must be a boolean.")
-        return value
+        def update(self, instance, validated_data):
+            action = "approved" if validated_data.get("is_active") else "rejected"
+            rejection_message = validated_data.get("rejection_message", "")
 
-    def validate_is_pending(self, value):
-        if not isinstance(value, bool):
-            raise serializers.ValidationError("The 'is_pending' field must be a boolean.")
-        return value    
+            # Save history
+            UserStatusHistory.objects.create(
+                user=instance,
+                status=action,
+                rejection_message=rejection_message if action == "rejected" else None
+            )
 
-    def update(self, instance, validated_data):
-        instance.is_active = validated_data.get('is_active', instance.is_active)
-        instance.is_pending = validated_data.get('is_pending', instance.is_pending)
-        instance.save()
-        return instance
-    
+            # Update User
+            instance.is_pending = True
+            instance.is_active = validated_data.get("is_active")
+            instance.save()
+            return instance    
 class UserDetailSerializer(serializers.ModelSerializer):
   
     class Meta:
         model = User
         fields = ['id', 'full_name', 'email', 'phone_number', 'role', 'department', 'is_active', 'is_pending', 'created_at', 'updated_at']
         read_only_fields = ['id', 'is_active', 'is_pending', 'created_at', 'updated_at']
+
+
+class UserStatusHistorySerializer(serializers.ModelSerializer):
+    user_email = serializers.EmailField(source='user.email', read_only=True)
+    user_full_name = serializers.CharField(source='user.full_name', read_only=True)
+
+    class Meta:
+        model = UserStatusHistory
+        fields = ['id', 'user_email', 'user_full_name', 'status', 'rejection_message', 'timestamp']
+

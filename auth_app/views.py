@@ -1,11 +1,12 @@
+from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status, permissions
-from django.core.mail import send_mail
+from rest_framework import status, permissions, viewsets
 
 from auth_app.permissions import IsSystemAdmin
-from .models import User
-from .serializers import UserDetailSerializer, UserRegistrationSerializer, AdminApproveSerializer
+from auth_app.services import send_approval_email, send_rejection_email
+from .models import User, UserStatusHistory
+from .serializers import UserDetailSerializer, UserRegistrationSerializer, AdminApproveSerializer, UserStatusHistorySerializer
 
 class UserRegistrationView(APIView):
     
@@ -33,102 +34,167 @@ class UserDetailView(APIView):
             return Response({
                 "error": "No pending user found with this ID."
             }, status=status.HTTP_404_NOT_FOUND)
+    def delete(self,request,user_id):
+        try:
+            user = User.objects.get(id=user_id)
+            user.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except User.DoesNotExist:
+            return Response({
+                "error": "No pending user found with this ID."
+            }, status=status.HTTP_404_NOT_FOUND)
+    def update(self,user_id):
+        pass
 
-
-class UserListView(APIView):
-   
-    permission_classes = [permissions.IsAuthenticated, IsSystemAdmin]
-
-    def get(self, request):
-        pending_users = User.objects.all()
-        serializer = UserDetailSerializer(pending_users, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)   
 
 
 class AdminApprovalView(APIView):
-   
     permission_classes = [permissions.IsAuthenticated, IsSystemAdmin]
 
-    def get(self, request, user_id):
-       
-        try:
-            user = User.objects.get(id=user_id)
-        except User.DoesNotExist:
-            return Response({
-                "error": "User not found."
-            }, status=status.HTTP_404_NOT_FOUND)
-
-        serializer = UserDetailSerializer(user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-    
+    def get(self,request):
+        pending_users = User.objects.filter(is_pending=True)
+        serializer = UserDetailSerializer(pending_users, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)  
 
     def post(self, request, user_id):
         try:
             user = User.objects.get(id=user_id, is_pending=True)
         except User.DoesNotExist:
-            return Response({
-                "error": "No pending user found with this ID."
-            }, status=status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "No pending user found with this ID."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
-        action = request.data.get('action')
-        if not action or action not in ['approve', 'reject']:
-            return Response({
-                "error": "Invalid action. Please specify 'approve' or 'reject'."
-            }, status=status.HTTP_400_BAD_REQUEST)
+        action = request.data.get("action")
+        if action not in dict(UserStatusHistory.STATUS_CHOICES):
+            return Response(
+                {"error": "Invalid action. Please specify 'approve' or 'reject'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         request_data = {
-            "is_active": action == 'approve',
-            "is_pending": False  
+            "is_active": action == UserStatusHistory.STATUS_CHOICES[0][0],
+            "is_pending": False,
         }
 
-        if action == 'reject':
-            rejection_message = request.data.get('rejection_message', '').strip()
+        if action == UserStatusHistory.STATUS_CHOICES[1][0]:
+            rejection_message = request.data.get("rejection_message", "").strip()
             if not rejection_message:
-                return Response({
-                    "error": "Rejection message is required for rejection."
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"error": "Rejection message is required for rejection."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             request_data["rejection_message"] = rejection_message
 
         serializer = AdminApproveSerializer(user, data=request_data, partial=True)
         if serializer.is_valid():
-            # serializer.save()
-
-            if action == 'approve':
-                email_subject = "Registration Approved"
-                email_body = (
-                    f"Dear {user.full_name},\n\n"
-                    "Your registration has been approved. You can now log in.\n\n"
-                    "Best regards,\nAdmin Team"
-                )
-            elif action == 'reject':
-                email_subject = "Registration Rejected"
-                email_body = (
-                    f"Dear {user.full_name},\n\n"
-                    "We regret to inform you that your registration has been rejected.\n"
-                    f"Reason:\n\n{rejection_message}\n\n"
-                    "For more details, please contact support.\n\n"
-                    "Best regards,\nAdmin Team"
-                )
-                
-
-            email_sent = send_mail(
-                email_subject,
-                email_body,
-                'mebrhit765@gmail.com', 
-                [user.email],
+            UserStatusHistory.objects.create(
+                user=user,
+                status=action,
+                rejection_message=rejection_message if action == UserStatusHistory.STATUS_CHOICES[1][0] else None,
             )
 
-            if email_sent == 1:
-                if action == "approve":
-                    serializer.save()
-                elif action=="reject":
-                    user.delete()
-                return Response({
-                    "message": f"User {action}d successfully, and email sent."
-                }, status=status.HTTP_200_OK)
-            else:
-                return Response({
-                    "error": f"User {action}d, but email could not be sent. Please contact support."
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            try:
+                if action == UserStatusHistory.STATUS_CHOICES[0][0]:
+                    send_approval_email(user)
+                elif action == UserStatusHistory.STATUS_CHOICES[1][0]:
+                    send_rejection_email(user, rejection_message)
+                serializer.save()
+            except Exception as e:
+                return Response(
+                    {
+                        "error": (
+                            f"User {action}d, but email could not be sent. "
+                            f"Please contact support. Error: {str(e)}"
+                        )
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
+            return Response(
+                {"message": f"User {action}d successfully, and email sent."},
+                status=status.HTTP_200_OK,
+            )
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def patch(self, request, user_id):
+        user = get_object_or_404(User, id=user_id)
+
+        new_role = request.data.get("role")
+        if not new_role or new_role not in dict(User.ROLE_CHOICES):
+            return Response(
+                {"error": "Invalid role. Please provide a valid role."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.role = new_role
+        user.save()
+
+        return Response(
+            {"message": f"User role updated to {user.get_role_display()} successfully."},
+            status=status.HTTP_200_OK,
+        )
+    
+      
+class UserResubmissionView(APIView):
+    permission_classes = [permissions.AllowAny]
+    def get(self, request, user_id):
+        try:
+            user = User.objects.get(id=user_id)
+            serializer = UserDetailSerializer(user)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            return Response({"error": "User not found or access denied."}, status=status.HTTP_404_NOT_FOUND)
+
+    def patch(self, request, user_id):
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response({"error": "User not found or access denied."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = UserDetailSerializer(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            user.is_pending = True  # Mark user as pending again for review
+            user.save()
+
+            return Response({"message": "Your details have been updated and sent for review."}, status=status.HTTP_200_OK)
+
+        return Response({"message":"here is the error detail"},serializer.errors,status=status.HTTP_400_BAD_REQUEST)
+    
+
+
+class DeactivateUserView(APIView):
+    permission_classes = [IsSystemAdmin]  
+
+    def post(self, request, user_id):
+        try:
+            user = User.objects.get(id=user_id)
+            user.deactivate()
+            return Response({"message": "User deactivated successfully."}, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+
+class ReactivateUserView(APIView):
+    permission_classes = [IsSystemAdmin]  
+
+    def post(self, request, user_id):
+        try:
+            user = User.objects.get(id=user_id)
+            user.activate()
+            return Response({"message": "User reactivated successfully."}, status=status.HTTP_200_OK)
+        except User.DoesNotExist:
+            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+        
+
+class UserStatusHistoryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = UserStatusHistory.objects.all().order_by('-timestamp')
+    serializer_class = UserStatusHistorySerializer
+    permission_classes = [permissions.IsAuthenticated]  
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.is_superuser or user.role == user.SYSTEM_ADMIN:
+            return UserStatusHistory.objects.all().order_by('-timestamp')
+        return UserStatusHistory.objects.filter(user=user).order_by('-timestamp')

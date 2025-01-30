@@ -14,5 +14,5 @@ class CustomUserManager(BaseUserManager):
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault('is_active', True)
         extra_fields.setdefault('is_pending', False)
-        extra_fields.setdefault('role', 7)  # System Admin
+        extra_fields.setdefault('role', 7)  
         return self.create_user(email, password, **extra_fields)
