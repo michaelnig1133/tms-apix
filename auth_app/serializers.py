@@ -73,17 +73,28 @@ class UserStatusHistorySerializer(serializers.ModelSerializer):
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
-    department_manager = serializers.StringRelatedField(allow_null=True)
+    department_manager = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(role=User.DEPARTMENT_MANAGER), allow_null=True, required=False
+    )
 
     class Meta:
         model = Department
-        fields = ['id', 'name', 'department_manager']
+        fields = ["id", "name", "department_manager"]
 
     def validate_department_manager(self, value):
-        
-        if value and value.role != User.DEPARTMENT_MANAGER:
-            raise serializers.ValidationError("The selected user must be a department manager.")
+        """
+        Ensure the assigned user is a department manager and not already assigned to another department.
+        """
+        if value:
+            if value.role != User.DEPARTMENT_MANAGER:
+                raise serializers.ValidationError("The selected user must be a department manager.")
+
+            # Check if the user is already managing another department
+            if Department.objects.filter(department_manager=value).exists():
+                raise serializers.ValidationError("This user is already assigned to another department.")
+
         return value
+
 
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
