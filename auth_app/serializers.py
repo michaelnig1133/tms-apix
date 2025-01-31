@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, UserStatusHistory
+from .models import Department, Notification, User, UserStatusHistory
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -13,6 +13,13 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def validate(self,data):
         if data['password'] != data['confirm_password']:
             raise serializers.ValidationError("Passwords do not much")
+        
+        role = data.get("role")
+        department = data.get("department")
+
+        if role != User.SYSTEM_ADMIN and not department:
+            raise serializers.ValidationError({"department": "This field is required for non-admin users."})
+
         return data
     
     def create(self, validated_data):
@@ -36,14 +43,12 @@ class AdminApproveSerializer(serializers.ModelSerializer):
             action = "approved" if validated_data.get("is_active") else "rejected"
             rejection_message = validated_data.get("rejection_message", "")
 
-            # Save history
             UserStatusHistory.objects.create(
                 user=instance,
                 status=action,
                 rejection_message=rejection_message if action == "rejected" else None
             )
 
-            # Update User
             instance.is_pending = True
             instance.is_active = validated_data.get("is_active")
             instance.save()
@@ -64,3 +69,23 @@ class UserStatusHistorySerializer(serializers.ModelSerializer):
         model = UserStatusHistory
         fields = ['id', 'user_email', 'user_full_name', 'status', 'rejection_message', 'timestamp']
 
+
+
+
+class DepartmentSerializer(serializers.ModelSerializer):
+    department_manager = serializers.StringRelatedField(allow_null=True)
+
+    class Meta:
+        model = Department
+        fields = ['id', 'name', 'department_manager']
+
+    def validate_department_manager(self, value):
+        
+        if value and value.role != User.DEPARTMENT_MANAGER:
+            raise serializers.ValidationError("The selected user must be a department manager.")
+        return value
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ['message', 'is_read', 'created_at', 'user']

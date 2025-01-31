@@ -12,6 +12,9 @@ django-environ = "*"
 pipreqs = "*"
 psycopg2-binary = "*"
 python-dotenv = "*"
+channels = "*"
+channels-redis = "*"
+daphne = "*"
 
 [dev-packages]
 

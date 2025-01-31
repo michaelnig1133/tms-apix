@@ -3,6 +3,19 @@ from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.utils.timezone import now
 from .managers import CustomUserManager
 
+class Department(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    department_manager = models.OneToOneField(
+        "User", 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name="managed_department",
+    )
+
+    def __str__(self):
+        return self.name
+
 
 class User(AbstractBaseUser, PermissionsMixin):
     EMPLOYEE = 1
@@ -28,12 +41,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     phone_number = models.CharField(max_length=15)
     role = models.PositiveSmallIntegerField(choices=ROLE_CHOICES,default=1)
-    department = models.CharField(max_length=100)
     is_active = models.BooleanField(default=False) 
     is_deleted=models.BooleanField(default=False) 
     is_pending = models.BooleanField(default=True)  
     created_at = models.DateTimeField(default=now)
     updated_at = models.DateTimeField(auto_now=True)
+    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True, related_name="employees")
+    
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
@@ -52,6 +66,23 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.is_active = True
         self.is_deleted = False
         self.save()
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+
+        # Ensure only one department manager per department
+        if self.role == self.DEPARTMENT_MANAGER and self.department:
+            if self.department.department_manager and self.department.department_manager != self:
+                self.department.department_manager.department = None
+                self.department.department_manager.save()
+
+            self.department.department_manager = self
+            self.department.save()
+
+        # If a department manager changes roles, remove them as the manager
+        elif self.department and self.department.department_manager == self and self.role != self.DEPARTMENT_MANAGER:
+            self.department.department_manager = None
+            self.department.save()
     
 class UserStatusHistory(models.Model):
     STATUS_CHOICES = (
@@ -65,3 +96,12 @@ class UserStatusHistory(models.Model):
   
     def __str__(self):
         return self.status
+    
+class Notification(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    message = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)  # To track unread notifications
+
+    def __str__(self):
+        return self.message

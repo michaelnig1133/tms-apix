@@ -15,7 +15,6 @@ from datetime import timedelta
 from dotenv import load_dotenv
 import os
 
-import auth_app
 
 load_dotenv()
 
@@ -60,6 +59,8 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
+    # "daphne",  
+    "channels",
 
     "auth_app",
 ]
@@ -111,6 +112,12 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = "tms_backend.wsgi.application"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",  # Use Redis for production
+    },
+}
 
 
 # Database

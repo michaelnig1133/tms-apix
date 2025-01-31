@@ -2,11 +2,12 @@ from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, permissions, viewsets
+from rest_framework.viewsets import ModelViewSet
 
 from auth_app.permissions import IsSystemAdmin
 from auth_app.services import send_approval_email, send_rejection_email
-from .models import User, UserStatusHistory
-from .serializers import UserDetailSerializer, UserRegistrationSerializer, AdminApproveSerializer, UserStatusHistorySerializer
+from .models import Department, User, UserStatusHistory
+from .serializers import DepartmentSerializer, UserDetailSerializer, UserRegistrationSerializer, AdminApproveSerializer, UserStatusHistorySerializer
 
 class UserRegistrationView(APIView):
     
@@ -27,7 +28,7 @@ class UserDetailView(APIView):
 
     def get(self, request, user_id):
         try:
-            user = User.objects.get(id=user_id, is_pending=True)
+            user = User.objects.get(id=user_id)
             serializer = UserDetailSerializer(user)
             return Response(serializer.data, status=status.HTTP_200_OK)
         except User.DoesNotExist:
@@ -119,13 +120,35 @@ class AdminApprovalView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def patch(self, request, user_id):
+       
         user = get_object_or_404(User, id=user_id)
 
-        new_role = request.data.get("role")
-        if not new_role or new_role not in dict(User.ROLE_CHOICES):
+        # Ensure role is provided and is a valid integer
+        try:
+            new_role = int(request.data.get("role"))
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "Invalid role format. Role must be an integer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        valid_roles = {choice[0] for choice in User.ROLE_CHOICES}
+        if new_role not in valid_roles:
             return Response(
                 {"error": "Invalid role. Please provide a valid role."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if user.role == User.SYSTEM_ADMIN:
+            return Response(
+                {"error": "System Admin role cannot be changed."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if user.role == new_role:
+            return Response(
+                {"message": f"User is already assigned the role {user.get_role_display()}."},
+                status=status.HTTP_200_OK,
             )
 
         user.role = new_role
@@ -161,7 +184,7 @@ class UserResubmissionView(APIView):
 
             return Response({"message": "Your details have been updated and sent for review."}, status=status.HTTP_200_OK)
 
-        return Response({"message":"here is the error detail"},serializer.errors,status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": "Here is the error detail", "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
     
 
 
@@ -198,3 +221,28 @@ class UserStatusHistoryViewSet(viewsets.ReadOnlyModelViewSet):
         if user.is_superuser or user.role == user.SYSTEM_ADMIN:
             return UserStatusHistory.objects.all().order_by('-timestamp')
         return UserStatusHistory.objects.filter(user=user).order_by('-timestamp')
+
+
+
+
+class AdminNotificationsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsSystemAdmin]
+
+    def get(self, request):
+        pending_users = User.objects.filter(is_pending=True)
+        pending_count = pending_users.count()
+
+        if pending_count == 0:
+            return Response({"message": "No new registration requests."}, status=status.HTTP_204_NO_CONTENT)
+
+        serializer = UserDetailSerializer(pending_users, many=True)
+        return Response({
+            "new_registration_requests": pending_count,
+            "pending_users": serializer.data
+        }, status=status.HTTP_200_OK)
+
+
+
+class DepartmentViewSet(ModelViewSet):
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer

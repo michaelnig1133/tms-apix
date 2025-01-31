@@ -1,3 +1,4 @@
+from .models import Notification
 from django.core.mail import send_mail
 
 def send_approval_email(user):
@@ -27,3 +28,22 @@ def send_rejection_email(user, rejection_message):
     from_email = 'mebrhit765@gmail.com'  
     recipient_list = [user.email]
     send_mail(subject, message, from_email, recipient_list)
+
+
+
+def create_registration_notification(user):
+    email=[user.email]
+    message = f"A new user registration request has been made for",email ,"."
+    Notification.objects.create(
+        user=user,  # This would be the system admin or the appropriate admin
+        # title="New User Registration Request",
+        message=message
+    )
+
+def create_resubmission_notification(user):
+    message = f"User {user.email} has resubmitted their registration."
+    Notification.objects.create(
+        user=user,  # This would be the system admin or the appropriate admin
+        # title="User Resubmission Request",
+        message=message
+    )
