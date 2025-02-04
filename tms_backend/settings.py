@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+import dj_database_url
 from dotenv import load_dotenv
 import os
 
@@ -136,15 +137,12 @@ CHANNEL_LAYERS = {
 # }
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": "tms_db",
-        "USER":"postgres",
-        "PASSWORD":"1234",
-        "HOST":"localhost",
-        "PORT":"5432"
-    }
+    'default': dj_database_url.config(
+        default=os.getenv('DATABASE_URL', 'postgresql://tms_user:8wyCQjnAz5Kot5jywPjYz5A6Gyv95by9@dpg-cugr9qhu0jms73fpv150-a/tms_db_lm6y'),
+        conn_max_age=600
+    )
 }
+
 
 
 # Password validation
