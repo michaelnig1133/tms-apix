@@ -106,7 +106,7 @@ class AdminApprovalView(APIView):
                     {
                         "error": (
                             f"User {action}d, but email could not be sent. "
-                            f"Please contact support. Error: {str(e)}"
+                            f"Error: {str(e)}"
                         )
                     },
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
