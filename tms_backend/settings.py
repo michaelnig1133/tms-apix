@@ -42,7 +42,11 @@ SECRET_KEY = "django-insecure-4&&!k$xqt0g&$r^!t)1*51#i0v8wr4u7(us#5106t!f#2ka=jw
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "tms-api-23gs.onrender.com",  
+    "localhost",
+    "127.0.0.1",
+]
 
 AUTH_USER_MODEL = "auth_app.User" 
 
@@ -64,6 +68,7 @@ INSTALLED_APPS = [
     "channels",
 
     "auth_app",
+    "core"
 ]
 
 MIDDLEWARE = [
@@ -84,10 +89,13 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10,  
 }
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=2),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
@@ -138,7 +146,7 @@ CHANNEL_LAYERS = {
 
 DATABASES = {
     'default': dj_database_url.config(
-        default=os.getenv('DATABASE_URL', 'postgresql://tms_user:8wyCQjnAz5Kot5jywPjYz5A6Gyv95by9@dpg-cugr9qhu0jms73fpv150-a/tms_db_lm6y'),
+        default=os.getenv('DATABASE_URL'),
         conn_max_age=600
     )
 }

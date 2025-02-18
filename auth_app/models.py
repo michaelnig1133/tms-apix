@@ -69,7 +69,6 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-
         # Ensure only one department manager per department
         if self.role == self.DEPARTMENT_MANAGER and self.department:
             if self.department.department_manager and self.department.department_manager != self:
@@ -96,12 +95,3 @@ class UserStatusHistory(models.Model):
   
     def __str__(self):
         return self.status
-    
-class Notification(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
-    message = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    is_read = models.BooleanField(default=False)  # To track unread notifications
-
-    def __str__(self):
-        return self.message

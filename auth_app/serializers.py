@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Department, Notification, User, UserStatusHistory
+from .models import Department, User, UserStatusHistory
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -94,9 +94,3 @@ class DepartmentSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("This user is already assigned to another department.")
 
         return value
-
-
-class NotificationSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Notification
-        fields = ['message', 'is_read', 'created_at', 'user']
