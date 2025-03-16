@@ -17,7 +17,9 @@ class NotificationService:
         },
         'approved': {
             'title': _("Transport Request Approved"),
-            'message': _("Your transport request #{request_id} has been approved by {approver}"),
+            'message': _("Your transport request #{request_id} has been approved by {approver}. "
+                         "Vehicle: {vehicle} | Driver: {driver}. "
+                         "Destination: {destination}, Date: {date}, Start Time: {start_time}."),
             'priority': 'normal'
         },
         'rejected': {
@@ -27,7 +29,9 @@ class NotificationService:
         },
         'assigned': {
             'title': _("Vehicle Assigned"),
-            'message': _("Vehicle and driver have been assigned to request #{request_id}"),
+            'message':  _("You have been assigned to drive vehicle {vehicle} for transport request #{request_id}. "
+                 "Destination: {destination}, Date: {date}, Start Time: {start_time}. "
+                 "Passengers: {employees}. Please be prepared."),
             'priority': 'normal'
         }
     }
@@ -42,15 +46,17 @@ class NotificationService:
         if not template:
             raise ValueError(f"Invalid notification type: {notification_type}")
 
-        # Format message with provided kwargs
+        passengers = kwargs.get("passengers",[])
+        passengers_str = ", ".join([p.full_name for p in passengers]) if passengers else "No additional passengers"        # Format message with provided kwargs
         message_kwargs = {
             'request_id': transport_request.id,
             'requester': transport_request.requester.full_name,
             'destination': transport_request.destination,
             'date': transport_request.start_day.strftime('%Y-%m-%d'),
+            'passengers':passengers_str,
             **kwargs
         }
-
+        print("Notification message kwargs:", message_kwargs)
         notification = Notification.objects.create(
             recipient=recipient,
             transport_request=transport_request,
@@ -64,6 +70,7 @@ class NotificationService:
                 'requester_id': transport_request.requester.id,
                 'destination': transport_request.destination,
                 'date': transport_request.start_day.strftime('%Y-%m-%d'),
+                'passengers': passengers_str,
                 **kwargs
             }
         )

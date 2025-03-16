@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from auth_app.models import User
 from django.utils.timezone import now 
+from auth_app.serializers import UserDetailSerializer
 from core.models import TransportRequest, Vehicle, Notification
 
 class TransportRequestSerializer(serializers.ModelSerializer):
@@ -40,16 +41,24 @@ class TransportRequestSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
     
 class VehicleSerializer(serializers.ModelSerializer):
+    driver_name = serializers.CharField(source="driver.full_name", read_only=True)  # Fetch driver's full name
+    driver = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.exclude(role__in=[User.SYSTEM_ADMIN,User.EMPLOYEE]),  # Ensure only drivers are selectable
+        required=False,  # Optional field
+        allow_null=True
+    )
     class Meta:
         model = Vehicle
         fields = '__all__'
 
-    # def validate(self, data):
-    #     """ Ensure rental details are provided if the vehicle is rented """
-    #     if data.get('source') == Vehicle.RENTED:
-    #         if not data.get('rental_company') or not data.get('rental_price_per_day'):
-    #             raise serializers.ValidationError("Rental company and rental price per day are required for rented vehicles.")
-    #     return data
+    def validate_driver(self, value):
+        """
+        Ensure the assigned user is a driver and is not already assigned to another vehicle.
+        """
+        if value and Vehicle.objects.filter(driver=value).exists():
+            raise serializers.ValidationError("This driver is already assigned to another vehicle.")
+        return value
+
 
 class NotificationSerializer(serializers.ModelSerializer):
     recipient_name = serializers.CharField(source='recipient.full_name', read_only=True)
