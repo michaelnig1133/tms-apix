@@ -1,15 +1,21 @@
 from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status, permissions, viewsets
+from rest_framework import status, permissions, viewsets, generics
 from rest_framework.viewsets import ModelViewSet
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.pagination import PageNumberPagination
 
-from auth_app.permissions import IsSystemAdmin
+from auth_app.serializers import CustomTokenObtainPairSerializer
+from auth_app.permissions import IsSystemAdmin, ReadOnlyOrAuthenticated
 from auth_app.services import StandardResultsSetPagination, send_approval_email, send_rejection_email
 from .models import Department, User, UserStatusHistory
-from .serializers import DepartmentSerializer, UserDetailSerializer, UserRegistrationSerializer, AdminApproveSerializer, UserStatusHistorySerializer
+from .serializers import DepartmentSerializer, UserDetailSerializer, UserListSerializer, UserRegistrationSerializer, AdminApproveSerializer, UserStatusHistorySerializer
+from rest_framework_simplejwt.views import TokenObtainPairView
+
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
 
 class UserRegistrationView(APIView):
     permission_classes = [permissions.AllowAny]
@@ -23,19 +29,24 @@ class UserRegistrationView(APIView):
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+
 class UserDetailView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request, user_id):
-        if request.user.id != user_id:
-            return Response({"error": "You are not authorized to view this user's details."}, status=status.HTTP_403_FORBIDDEN)
+    def get(self, request, user_id=None):
+        if user_id is None:
+            user=request.user
+        else:
+            if request.user.id != user_id:
+                return Response({"error": "You are not authorized to view this user's details."}, status=status.HTTP_403_FORBIDDEN)
         
-        try:
-            user = User.objects.get(id=user_id)
-            serializer = UserDetailSerializer(user)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except User.DoesNotExist:
-            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = UserDetailSerializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, user_id):
         if request.user.id != user_id:
@@ -49,21 +60,25 @@ class UserDetailView(APIView):
             return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
 
     def put(self, request, user_id):
-        if request.user.id != user_id:
-            return Response({"error": "You are not authorized to update this user."}, status=status.HTTP_403_FORBIDDEN)
+        if user_id  is None:
+            user=request.user
+        else:
+            if request.user.id != user_id:
+                return Response({"error": "You are not authorized to update this user."}, status=status.HTTP_403_FORBIDDEN)
 
-        try:
-            user = User.objects.get(id=user_id)
+            try:
+                user = User.objects.get(id=user_id)
 
-            if "email" in request.data and request.data['email']!=user.email:
-                return Response({"error": "Email cannot be updated."}, status=status.HTTP_400_BAD_REQUEST)
-            serializer = UserDetailSerializer(user, data=request.data, partial=True)
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except User.DoesNotExist:
-            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+                if "email" in request.data and request.data['email']!=user.email:
+                    return Response({"error": "Email cannot be updated."}, status=status.HTTP_400_BAD_REQUEST)
+          
+            except User.DoesNotExist:
+                return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+        serializer = UserDetailSerializer(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class AdminApprovalView(APIView):
@@ -242,16 +257,20 @@ class UserStatusHistoryViewSet(viewsets.ReadOnlyModelViewSet):
         if user.is_superuser or user.role == user.SYSTEM_ADMIN:
             return UserStatusHistory.objects.all().order_by('-timestamp')
         return UserStatusHistory.objects.filter(user=user).order_by('-timestamp')
-
+class UserListView(generics.ListAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserListSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
         
 class DepartmentViewSet(ModelViewSet):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [ReadOnlyOrAuthenticated]
+    pagination_class=None
 
 class ApprovedUsersView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsSystemAdmin]
+    permission_classes = [permissions.IsAuthenticated, permissions.AllowAny]
     
     def get(self, request):
         approved_users = User.objects.filter(is_active=True, is_pending=False)
@@ -299,3 +318,10 @@ class LogoutView(APIView):
         except Exception as e:
             print(f"Logout error: {e}")  
             return Response({"error": "An error occurred during logout"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)        
+        
+        
+class SomeProtectedView(APIView):
+    permission_classes = [permissions.IsAuthenticated]  # Only authenticated users can access
+
+    def get(self, request):
+        return Response({"message": "Welcome!"}, status=status.HTTP_200_OK)  

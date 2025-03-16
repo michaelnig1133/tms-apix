@@ -47,7 +47,9 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
 ]
-
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",  
+]
 AUTH_USER_MODEL = "auth_app.User" 
 
 
@@ -80,6 +82,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
 ]
 
 REST_FRAMEWORK = {
@@ -148,7 +151,8 @@ CHANNEL_LAYERS = {
 DATABASES = {
     'default': dj_database_url.config(
         default=os.getenv('DATABASE_URL'),
-        conn_max_age=600
+        conn_max_age=600,
+        ssl_require=True
     )
 }
 

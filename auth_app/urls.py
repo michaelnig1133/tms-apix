@@ -2,7 +2,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView, TokenObtainPairView
 
-from auth_app.views import AdminApprovalView, ApprovedUsersView, DeactivateUserView, DepartmentViewSet, LogoutView, ReactivateUserView, UserDetailView, UserRegistrationView, UserResubmissionView, UserStatusHistoryViewSet
+from auth_app.views import AdminApprovalView, ApprovedUsersView, CustomTokenObtainPairView, DeactivateUserView, DepartmentViewSet, LogoutView, ReactivateUserView, UserDetailView, UserListView, UserRegistrationView, UserResubmissionView, UserStatusHistoryViewSet
     
 
 
@@ -13,13 +13,15 @@ router.register(r'status-history', UserStatusHistoryViewSet)
 urlpatterns = [
     path('',include(router.urls)),
     # path("admin/", admin.site.urls),
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('api/logout/',LogoutView.as_view(),name='logout'),
     path('register/', UserRegistrationView.as_view(), name='register'),
     path('approve/<int:user_id>/', AdminApprovalView.as_view(), name='approve'),
     path('users/', AdminApprovalView.as_view(), name='users'),
-    path('users/<int:user_id>/', UserDetailView.as_view(), name='user-detail'),
+    path('users-list/', UserListView.as_view(), name='user-list'),
+    path('api/users/me/',UserDetailView.as_view(),name='current-user'),
+    path('api/users/<int:user_id>/', UserDetailView.as_view(), name='user-detail'),
     path("resubmit/<int:user_id>/", UserResubmissionView.as_view(), name="resubmit"),
     path("activate/<int:user_id>/",ReactivateUserView.as_view(),name="activate"),
     path("deactivate/<int:user_id>/",DeactivateUserView.as_view(),name="activate"),
