@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from .models import Department, User, UserStatusHistory
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -60,6 +62,11 @@ class UserDetailSerializer(serializers.ModelSerializer):
         fields = ['id', 'full_name', 'email', 'phone_number', 'role', 'department', 'is_active', 'is_pending', 'created_at', 'updated_at']
         read_only_fields = ['id', 'is_active', 'is_pending', 'created_at', 'updated_at']
 
+class UserListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'full_name']
+
 
 class UserStatusHistorySerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source='user.email', read_only=True)
@@ -94,3 +101,10 @@ class DepartmentSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("This user is already assigned to another department.")
 
         return value
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    def get_token(self, user):
+        token = super().get_token(user)
+        token['email'] = user.email
+        token['role'] = user.role  # Ensure 'role' is a field in your User model
+        return token

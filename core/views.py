@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
 from auth_app.permissions import IsTransportManager
+from auth_app.serializers import UserDetailSerializer
 from core.models import TransportRequest, Vehicle, Notification
 from core.serializers import TransportRequestSerializer, NotificationSerializer, VehicleSerializer
 from core.services import NotificationService
@@ -12,7 +13,7 @@ from auth_app.models import User
 # class VehicleCreateView(APIView):
 #     permission_classes = [IsTransportManager]
 
-#     defbl post(self,request):
+#     def post(self,request):
 #         serializer = VehicleSerializer(data=request.data)
 #         if serializer.is_valid():
 #             serializer.save()
@@ -26,6 +27,27 @@ class VehicleViewSet(ModelViewSet):
     serializer_class = VehicleSerializer
     permission_classes = [IsTransportManager]
 
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object() 
+        serializer = self.get_serializer(instance, data=request.data, partial=True)  
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+
+        return Response(serializer.data)
+
+class AvailableVehiclesListView(generics.ListAPIView):
+    queryset = Vehicle.objects.filter(status=Vehicle.AVAILABLE).select_related("driver")
+    serializer_class = VehicleSerializer
+    permission_classes = [IsTransportManager]
+
+class AvailableDriversView(APIView):
+    permission_classes = [IsTransportManager]
+
+    def get(self, request):
+        drivers = User.objects.exclude(role__in=[User.SYSTEM_ADMIN,User.EMPLOYEE])  # Only fetch unassigned drivers
+        drivers=drivers.filter(assigned_vehicle__isnull=True)
+        serializer = UserDetailSerializer(drivers, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class TransportRequestCreateView(generics.CreateAPIView):
     queryset = TransportRequest.objects.all()
@@ -105,33 +127,45 @@ class TransportRequestActionView(APIView):
             # Transport Manager Actions
             elif request.user.role == User.TRANSPORT_MANAGER and transport_request.current_approver_role == User.TRANSPORT_MANAGER:
                 if action == 'approve':
-                    transport_request.status = 'approved'
-                    driver_id = request.data.get("driver_id")
-                    driver = get_object_or_404(User, id=driver_id)
-
-                    if TransportRequest.objects.filter(driver=driver, status='approved').exists():
-                        return Response({"error": "Driver is already assigned to another request."}, status=status.HTTP_400_BAD_REQUEST)
 
                     vehicle_id = request.data.get("vehicle_id")
-                    vehicle = get_object_or_404(Vehicle, id=vehicle_id)
-
+                    vehicle = Vehicle.objects.select_related("driver").get(id=vehicle_id)
+                    print(vehicle)
                     if TransportRequest.objects.filter(vehicle=vehicle, status='approved').exists():
                         return Response({"error": "Vehicle is already assigned to another request."}, status=status.HTTP_400_BAD_REQUEST)
-
-                    transport_request.driver = driver
-                    transport_request.vehicle = vehicle
+                    if not vehicle.driver:
+                        return Response({"error": "Selected vehicle does not have an assigned driver."}, status=status.HTTP_400_BAD_REQUEST)
+                    driver_name = vehicle.driver.full_name
+                    print(driver_name)
+                                     
+                    employees_list = ", ".join(transport_request.employees.values_list('full_name', flat=True))  # Get employee names
+                    
                     # Notify requester and driver
                     NotificationService.create_notification(
-                        'approved',
-                        transport_request,
-                        transport_request.requester,
-                        approver=request.user.full_name
-                    )
+                    'approved',
+                    transport_request,
+                    transport_request.requester,
+                    approver=request.user.full_name,
+                    vehicle=f"{vehicle.model} ({vehicle.license_plate})",  # Include both model and plate
+                    driver=vehicle.driver.full_name,
+                    destination=transport_request.destination,
+                    date=transport_request.start_day.strftime('%Y-%m-%d'),
+                    start_time=transport_request.start_time.strftime('%H:%M')
+                )
+
                     NotificationService.create_notification(
                         'assigned',
                         transport_request,
-                        transport_request.driver
-                    )
+                        vehicle.driver,  # Pass the User instance, not just the name
+                        vehicle=f"{vehicle.model} ({vehicle.license_plate})",  # Include vehicle details
+                        employees=employees_list,
+                        destination=transport_request.destination,
+                        date=transport_request.start_day.strftime('%Y-%m-%d'),
+                        start_time=transport_request.start_time.strftime('%H:%M'))
+                    
+                    transport_request.vehicle = vehicle
+                    transport_request.status = 'approved' 
+                    vehicle.mark_as_in_use()
                 elif action == 'reject':
                     transport_request.status = 'rejected'
                     transport_request.rejection_message = request.data.get("rejection_message", "")

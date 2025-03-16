@@ -2,11 +2,25 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
+# from auth_app.models import User
 
 User = get_user_model()
 
 
 class Vehicle(models.Model):
+    
+    AVAILABLE = 'available'
+    IN_USE = 'in_use'
+    SERVICE = 'service'
+    MAINTENANCE = 'maintenance'
+
+    VEHICLE_STATUS_CHOICES = [
+        (AVAILABLE, 'Available'),
+        (IN_USE, 'In Use'),
+        (SERVICE, 'In Service'),
+        (MAINTENANCE, 'Under Maintenance'),
+    ]
+
     ORGANIZATION_OWNED = 'organization'
     RENTED = 'rented'
 
@@ -18,9 +32,17 @@ class Vehicle(models.Model):
     license_plate = models.CharField(max_length=50, unique=True)
     model = models.CharField(max_length=100)
     capacity = models.IntegerField()
-    is_available = models.BooleanField(default=True)
     source = models.CharField(max_length=20, choices=VEHICLE_SOURCE_CHOICES, default=ORGANIZATION_OWNED)
     rental_company = models.CharField(max_length=255, blank=True, null=True) 
+    status = models.CharField(max_length=20, choices=VEHICLE_STATUS_CHOICES, default=AVAILABLE)
+    driver = models.OneToOneField(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='assigned_vehicle'
+    )  
+
 
     def clean(self):
         if self.source == self.RENTED and not self.rental_company:
@@ -28,6 +50,28 @@ class Vehicle(models.Model):
 
     def __str__(self):
         return f"{self.model} ({self.license_plate}) - {self.get_source_display()}"
+    
+    def mark_as_in_use(self):
+        """Mark the vehicle as in use when assigned to a transport request."""
+        if self.status != self.AVAILABLE:
+            raise ValidationError(_("Vehicle must be available to be assigned."))
+        self.status = self.IN_USE
+        self.save()
+
+    def mark_as_available(self):
+        """Mark the vehicle as available when the request is completed."""
+        self.status = self.AVAILABLE
+        self.save()
+
+    def mark_as_service(self):
+        """Mark the vehicle as in service."""
+        self.status = self.SERVICE
+        self.save()
+
+    def mark_as_maintenance(self):
+        """Mark the vehicle as under maintenance."""
+        self.status = self.MAINTENANCE
+        self.save()
 
 
 class TransportRequest(models.Model):
@@ -46,7 +90,7 @@ class TransportRequest(models.Model):
     reason = models.TextField()
     employees = models.ManyToManyField(User, related_name='travel_group')
     vehicle = models.ForeignKey(Vehicle, null=True, blank=True, on_delete=models.SET_NULL)
-    driver = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='assigned_requests')
+    # driver = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='assigned_requests')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     current_approver_role = models.PositiveSmallIntegerField(choices=User.ROLE_CHOICES, default=User.DEPARTMENT_MANAGER)
     rejection_message = models.TextField(blank=True, null=True)
