@@ -49,9 +49,10 @@ ALLOWED_HOSTS = [
 ]
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  
+    "https://tmsfront.vercel.app"
 ]
 AUTH_USER_MODEL = "auth_app.User" 
-
+CORS_ALLOW_CREDENTIALS = False
 
 
 # Application definition
