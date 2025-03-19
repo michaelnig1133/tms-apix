@@ -51,9 +51,15 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",  
     "https://tmsfront.vercel.app"
 ]
+
+
 AUTH_USER_MODEL = "auth_app.User" 
 CORS_ALLOW_CREDENTIALS = False
+CSRF_COOKIE_SECURE = True
 
+CSRF_TRUSTED_ORIGINS = [
+    "https://tmsfront.vercel.app"
+] 
 
 # Application definition
 
