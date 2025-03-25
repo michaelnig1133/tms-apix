@@ -19,7 +19,6 @@ class TransportRequestSerializer(serializers.ModelSerializer):
         """
         start_day = data.get("start_day")
         return_day = data.get("return_day")
-        employees = data.get("employees")
 
         if start_day and start_day < now().date():
             raise serializers.ValidationError({"start_day": "Start date cannot be in the past."})
