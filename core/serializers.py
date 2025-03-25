@@ -7,7 +7,7 @@ from core.models import TransportRequest, Vehicle, Notification
 
 class TransportRequestSerializer(serializers.ModelSerializer):
     requester = serializers.ReadOnlyField(source='requester.get_full_name')
-    employees = serializers.PrimaryKeyRelatedField(queryset=User.objects.all(), many=True)
+    employees = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role=User.EMPLOYEE), many=True)
 
     class Meta:
         model = TransportRequest
@@ -19,13 +19,11 @@ class TransportRequestSerializer(serializers.ModelSerializer):
         """
         start_day = data.get("start_day")
         return_day = data.get("return_day")
-        start_time = data.get("start_day")
+        employees = data.get("employees")
 
         if start_day and start_day < now().date():
             raise serializers.ValidationError({"start_day": "Start date cannot be in the past."})
         
-        
-
         if return_day and start_day and return_day < start_day:
             raise serializers.ValidationError({"return_day": "Return date cannot be before the start date."})
 
@@ -33,13 +31,21 @@ class TransportRequestSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         """
-        Automatically assigns the currently logged-in user as the requester.
+        Automatically assigns the currently logged-in user as the requester
+        and correctly handles ManyToMany relationships.
         """
         request = self.context.get("request")
+        
+        employees = validated_data.pop("employees", [])  # Extract employees list
+
         if request and request.user.is_authenticated:
             validated_data["requester"] = request.user
-        return super().create(validated_data)
-    
+
+        transport_request = TransportRequest.objects.create(**validated_data)  
+        transport_request.employees.set(employees)  
+        
+        return transport_request
+        
 class VehicleSerializer(serializers.ModelSerializer):
     driver_name = serializers.CharField(source="driver.full_name", read_only=True)  # Fetch driver's full name
     driver = serializers.PrimaryKeyRelatedField(
