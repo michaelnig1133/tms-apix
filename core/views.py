@@ -175,7 +175,7 @@ class TransportRequestActionView(APIView):
                     driver_name = vehicle.driver.full_name
                     print(driver_name)
                                      
-                    employees_list = ", ".join(transport_request.employees.values_list('full_name', flat=True))  # Get employee names
+                    # employees_list = ", ".join(transport_request.employees.values_list('full_name', flat=True))  # Get employee names
                     
                     # Notify requester and driver
                     NotificationService.create_notification(
@@ -201,7 +201,8 @@ class TransportRequestActionView(APIView):
                     
                     transport_request.vehicle = vehicle
                     transport_request.status = 'approved' 
-                    vehicle.mark_as_in_use()             
+                    vehicle.mark_as_in_use()  
+
                 elif action == 'reject':
                     transport_request.status = 'rejected'
                     transport_request.rejection_message = request.data.get("rejection_message", "")
@@ -252,8 +253,8 @@ class TransportRequestActionView(APIView):
 
             # Finance Manager Actions
             elif request.user.role == User.FINANCE_MANAGER and transport_request.current_approver_role == User.FINANCE_MANAGER:
-                if action == 'approve':
-                    transport_request.status = 'approved'
+                if action == 'forward':
+                    transport_request.status = 'forwarded'
                     transport_request.current_approver_role = User.TRANSPORT_MANAGER
                     # Notify Transport Manager and requester
                     transport_managers = User.objects.filter(role=User.TRANSPORT_MANAGER, is_active=True)
@@ -263,12 +264,12 @@ class TransportRequestActionView(APIView):
                             transport_request,
                             manager
                         )
-                    NotificationService.create_notification(
-                        'approved',
-                        transport_request,
-                        transport_request.requester,
-                        approver=request.user.full_name
-                    )
+                    # NotificationService.create_notification(
+                    #     'approved',
+                    #     transport_request,
+                    #     transport_request.requester,
+                    #     approver=request.user.full_name
+                    # )
                 elif action == 'reject':
                     transport_request.status = 'rejected'
                     transport_request.rejection_message = request.data.get("rejection_message", "")
@@ -279,7 +280,7 @@ class TransportRequestActionView(APIView):
                         rejector=request.user.full_name
                     )
                 else:
-                    return Response({"error": "Finance Managers can only approve or reject."}, status=status.HTTP_403_FORBIDDEN)
+                    return Response({"error": "Finance Managers can only forward or reject."}, status=status.HTTP_403_FORBIDDEN)
 
             transport_request.save()
             return Response({"message": f"Request {action}ed successfully."}, status=status.HTTP_200_OK)

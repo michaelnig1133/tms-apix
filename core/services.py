@@ -51,6 +51,7 @@ class NotificationService:
         passengers = list(transport_request.employees.all())
         print("Passengers: ", passengers)
         passengers_str = ", ".join([p.full_name for p in passengers]) if passengers else "No additional passengers"        # Format message with provided kwargs
+        print(type(passengers_str))
         message_kwargs = {
         'request_id': transport_request.id,
         'requester': transport_request.requester.full_name,
