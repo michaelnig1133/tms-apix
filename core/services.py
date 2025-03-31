@@ -24,7 +24,9 @@ class NotificationService:
         },
         'rejected': {
             'title': _("Transport Request Rejected"),
-            'message': _("Your transport request #{request_id} has been rejected by {rejector}"),
+            'message': _("Your transport request #{request_id} to {destination} on {date} at {start_time} "
+                 "has been rejected by {rejector}. Reason: {rejection_reason}. "
+                 "Passengers: {passengers}."),
             'priority': 'high'
         },
         'assigned': {
@@ -45,17 +47,29 @@ class NotificationService:
         template = cls.NOTIFICATION_TEMPLATES.get(notification_type)
         if not template:
             raise ValueError(f"Invalid notification type: {notification_type}")
-
-        passengers = kwargs.get("employees",[])
+        print(kwargs)
+        passengers = list(transport_request.employees.all())
+        print("Passengers: ", passengers)
         passengers_str = ", ".join([p.full_name for p in passengers]) if passengers else "No additional passengers"        # Format message with provided kwargs
         message_kwargs = {
-            'request_id': transport_request.id,
-            'requester': transport_request.requester.full_name,
-            'destination': transport_request.destination,
-            'date': transport_request.start_day.strftime('%Y-%m-%d'),
-            'passengers':passengers_str,
-            **kwargs
+        'request_id': transport_request.id,
+        'requester': transport_request.requester.full_name,
+        'destination': transport_request.destination,
+        'date': transport_request.start_day.strftime('%Y-%m-%d'),
+        'start_time': transport_request.start_time.strftime('%H:%M'),
+        'rejector': kwargs.get('rejector', 'Unknown'),
+        'rejection_reason': transport_request.rejection_message,
+        'passengers': passengers_str,
+        **kwargs
         }
+        # message_kwargs = {
+        #     'request_id': transport_request.id,
+        #     'requester': transport_request.requester.full_name,
+        #     'destination': transport_request.destination,
+        #     'date': transport_request.start_day.strftime('%Y-%m-%d'),
+        #     'passengers':passengers_str,
+        #     **kwargs
+        # }
         print("Notification message kwargs:", message_kwargs)
         notification = Notification.objects.create(
             recipient=recipient,
