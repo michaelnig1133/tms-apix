@@ -9,6 +9,7 @@ from rest_framework.pagination import PageNumberPagination
 from auth_app.serializers import CustomTokenObtainPairSerializer
 from auth_app.permissions import IsSystemAdmin, ReadOnlyOrAuthenticated
 from auth_app.services import StandardResultsSetPagination, send_approval_email, send_rejection_email
+from core import serializers
 from .models import Department, User, UserStatusHistory
 from .serializers import DepartmentSerializer, UserDetailSerializer, UserListSerializer, UserRegistrationSerializer, AdminApproveSerializer, UserStatusHistorySerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -262,12 +263,60 @@ class UserListView(generics.ListAPIView):
     serializer_class = UserListSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-        
+
+class DepartmentEmployeesView(generics.ListAPIView):
+    serializer_class = UserDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+
+        if user.role != User.DEPARTMENT_MANAGER:
+            raise serializers.ValidationError("You are not authorized to view this list.")
+
+        if "department_id" in self.kwargs and int(self.kwargs["department_id"]) != user.department_id:
+            raise serializers.ValidationError("You can only view employees in your assigned department.")
+
+        return User.objects.filter(department=user.department, role=User.EMPLOYEE).exclude(role=User.DEPARTMENT_MANAGER)
+
+
+
 class DepartmentViewSet(ModelViewSet):
     queryset = Department.objects.all()
     serializer_class = DepartmentSerializer
     permission_classes = [ReadOnlyOrAuthenticated]
     pagination_class=None
+
+    def update(self, request, *args, **kwargs):
+        """
+        Prevent assigning a new department manager unless the existing one is removed first.
+        """
+        instance = self.get_object()
+        new_manager_id = request.data.get("department_manager")
+
+        if new_manager_id:
+            new_manager = User.objects.filter(id=new_manager_id).first()
+
+            if not new_manager:
+                return Response({"error": "The selected department manager does not exist."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if new_manager.role != User.DEPARTMENT_MANAGER:
+                return Response({"error": "The selected user is not a department manager."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if instance.department_manager and instance.department_manager.id != new_manager.id:
+                return Response(
+                    {"error": "This department already has a manager. Remove the current manager first."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if Department.objects.filter(department_manager=new_manager).exclude(id=instance.id).exists():
+                return Response(
+                    {"error": "This user is already assigned as a department manager to another department."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        return super().update(request, *args, **kwargs)
+
 
 class ApprovedUsersView(APIView):
     permission_classes = [permissions.IsAuthenticated, permissions.AllowAny]

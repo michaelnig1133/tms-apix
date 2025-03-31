@@ -68,20 +68,21 @@ class User(AbstractBaseUser, PermissionsMixin):
         self.save()
 
     def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        # Ensure only one department manager per department
         if self.role == self.DEPARTMENT_MANAGER and self.department:
-            if self.department.department_manager and self.department.department_manager != self:
-                self.department.department_manager.department = None
-                self.department.department_manager.save()
+            existing_department = Department.objects.filter(department_manager=self).exclude(id=self.department.id).first()
 
+            if existing_department:
+                raise ValueError(f"{self.full_name} is already managing the department '{existing_department.name}'.")
+
+            # Assign the user as the department manager only if there's no conflict
             self.department.department_manager = self
             self.department.save()
 
-        # If a department manager changes roles, remove them as the manager
         elif self.department and self.department.department_manager == self and self.role != self.DEPARTMENT_MANAGER:
             self.department.department_manager = None
             self.department.save()
+
+        super().save(*args, **kwargs)
     
 class UserStatusHistory(models.Model):
     STATUS_CHOICES = (

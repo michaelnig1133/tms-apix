@@ -46,7 +46,7 @@ class NotificationService:
         if not template:
             raise ValueError(f"Invalid notification type: {notification_type}")
 
-        passengers = kwargs.get("passengers",[])
+        passengers = kwargs.get("employees",[])
         passengers_str = ", ".join([p.full_name for p in passengers]) if passengers else "No additional passengers"        # Format message with provided kwargs
         message_kwargs = {
             'request_id': transport_request.id,

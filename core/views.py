@@ -5,11 +5,15 @@ from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
 from auth_app.permissions import IsTransportManager
 from auth_app.serializers import UserDetailSerializer
+from core import serializers
 from core.models import TransportRequest, Vehicle, Notification
 from core.serializers import TransportRequestSerializer, NotificationSerializer, VehicleSerializer
 from core.services import NotificationService
 from auth_app.models import User
+import logging
 
+
+logger = logging.getLogger(__name__)
 # class VehicleCreateView(APIView):
 #     permission_classes = [IsTransportManager]
 
@@ -49,22 +53,50 @@ class AvailableDriversView(APIView):
         serializer = UserDetailSerializer(drivers, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+# class TransportRequestCreateView(generics.CreateAPIView):
+#     queryset = TransportRequest.objects.all()
+#     serializer_class = TransportRequestSerializer
+#     permission_classes = [permissions.IsAuthenticated]
+    
+#     def perform_create(self, serializer):
+#         transport_request = serializer.save(requester=self.request.user)
+        
+#         # Notify department manager
+#         department = self.request.user.department
+#         if department and department.department_manager:
+#             NotificationService.create_notification(
+#                 'new_request',
+#                 transport_request,
+#                 department.department_manager
+#             )
+
 class TransportRequestCreateView(generics.CreateAPIView):
     queryset = TransportRequest.objects.all()
     serializer_class = TransportRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def perform_create(self, serializer):
-        transport_request = serializer.save(requester=self.request.user)
+        employee = self.request.user
+        department = employee.department  # Get the department of the employee
         
-        # Notify department manager
-        department = self.request.user.department
-        if department and department.department_manager:
-            NotificationService.create_notification(
-                'new_request',
-                transport_request,
-                department.department_manager
-            )
+        if not department:
+            raise serializers.ValidationError("You are not assigned to any department.")
+
+        department_manager = User.objects.filter(department=department, role=User.DEPARTMENT_MANAGER, is_active=True).first()
+        
+        if not department_manager:
+            raise serializers.ValidationError("No department manager is assigned to your department.")
+
+        transport_request = serializer.save(requester=employee)
+        
+        # Notify department managers of the employee's department
+        # for manager in department_managers:
+        NotificationService.create_notification(
+            'new_request',
+            transport_request,
+            department_manager
+        )
+
 
 class TransportRequestListView(generics.ListAPIView):
     queryset = TransportRequest.objects.all()
@@ -74,7 +106,7 @@ class TransportRequestListView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
         if user.role == user.DEPARTMENT_MANAGER:
-            return TransportRequest.objects.filter(status='pending')
+            return TransportRequest.objects.filter(status='pending',requester__department=user.department)
         elif user.role == user.TRANSPORT_MANAGER:
             return TransportRequest.objects.filter(status='forwarded')
         elif user.role == user.CEO:
@@ -99,6 +131,11 @@ class TransportRequestActionView(APIView):
                 return Response({"error": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
 
             # Department Manager Actions
+            if transport_request.requester.department != request.user.department:
+                return Response(
+                    {"error": "You can only manage requests from employees in your department."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
             if request.user.role == User.DEPARTMENT_MANAGER and transport_request.current_approver_role == User.DEPARTMENT_MANAGER:
                 if action == 'forward':
                     transport_request.status = 'forwarded'
@@ -165,7 +202,7 @@ class TransportRequestActionView(APIView):
                     
                     transport_request.vehicle = vehicle
                     transport_request.status = 'approved' 
-                    vehicle.mark_as_in_use()
+                    vehicle.mark_as_in_use()             
                 elif action == 'reject':
                     transport_request.status = 'rejected'
                     transport_request.rejection_message = request.data.get("rejection_message", "")

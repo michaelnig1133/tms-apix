@@ -87,18 +87,22 @@ class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Department
         fields = ["id", "name", "department_manager"]
-
     def validate_department_manager(self, value):
         """
-        Ensure the assigned user is a department manager and not already assigned to another department.
+        Ensure the assigned user is a department manager and is not already assigned to another department.
+        Prevent replacing an existing manager without explicitly removing them first.
         """
         if value:
             if value.role != User.DEPARTMENT_MANAGER:
                 raise serializers.ValidationError("The selected user must be a department manager.")
 
             # Check if the user is already managing another department
-            if Department.objects.filter(department_manager=value).exists():
-                raise serializers.ValidationError("This user is already assigned to another department.")
+            if Department.objects.filter(department_manager=value).exclude(id=self.instance.id if self.instance else None).exists():
+                raise serializers.ValidationError("This user is already assigned as a department manager to another department.")
+
+            # Check if the department already has a manager and prevent reassignment
+            if self.instance and self.instance.department_manager and self.instance.department_manager != value:
+                raise serializers.ValidationError("This department already has a manager. Remove the current manager first.")
 
         return value
 
