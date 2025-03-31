@@ -195,7 +195,6 @@ class TransportRequestActionView(APIView):
                         transport_request,
                         vehicle.driver,  # Pass the User instance, not just the name
                         vehicle=f"{vehicle.model} ({vehicle.license_plate})",  # Include vehicle details
-                        employees=employees_list,
                         destination=transport_request.destination,
                         date=transport_request.start_day.strftime('%Y-%m-%d'),
                         start_time=transport_request.start_time.strftime('%H:%M'))

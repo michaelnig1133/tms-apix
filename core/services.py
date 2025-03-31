@@ -33,7 +33,7 @@ class NotificationService:
             'title': _("Vehicle Assigned"),
             'message':  _("You have been assigned to drive vehicle {vehicle} for transport request #{request_id}. "
                  "Destination: {destination}, Date: {date}, Start Time: {start_time}. "
-                 "Passengers: {employees}. Please be prepared."),
+                 "Passengers: {passengers}. Please be prepared."),
             'priority': 'normal'
         }
     }
