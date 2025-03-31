@@ -324,7 +324,7 @@ class ApprovedUsersView(APIView):
     def get(self, request):
         approved_users = User.objects.filter(is_active=True, is_pending=False)
         paginator = PageNumberPagination()
-        paginator.page_size = 10
+        paginator.page_size = 30
         paginated_users = paginator.paginate_queryset(approved_users, request)
         serializer = UserDetailSerializer(paginated_users, many=True)
         

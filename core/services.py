@@ -1,4 +1,6 @@
 from django.utils.translation import gettext as _
+from django.utils import timezone
+from datetime import timedelta
 from auth_app.models import User
 from core.models import TransportRequest, Notification
 
@@ -25,7 +27,7 @@ class NotificationService:
         'rejected': {
             'title': _("Transport Request Rejected"),
             'message': _("Your transport request #{request_id} to {destination} on {date} at {start_time} "
-                 "has been rejected by {rejector}. Reason: {rejection_reason}. "
+                 "has been rejected by {rejector}.Rejection Reason: {rejection_reason}. "
                  "Passengers: {passengers}."),
             'priority': 'high'
         },
@@ -50,7 +52,7 @@ class NotificationService:
         print(kwargs)
         passengers = list(transport_request.employees.all())
         print("Passengers: ", passengers)
-        passengers_str = ", ".join([p.full_name for p in passengers]) if passengers else "No additional passengers"        # Format message with provided kwargs
+        passengers_str = ", ".join([p.full_name for p in passengers]) if passengers else "No additional passengers"       
         print(type(passengers_str))
         message_kwargs = {
         'request_id': transport_request.id,
@@ -63,14 +65,7 @@ class NotificationService:
         'passengers': passengers_str,
         **kwargs
         }
-        # message_kwargs = {
-        #     'request_id': transport_request.id,
-        #     'requester': transport_request.requester.full_name,
-        #     'destination': transport_request.destination,
-        #     'date': transport_request.start_day.strftime('%Y-%m-%d'),
-        #     'passengers':passengers_str,
-        #     **kwargs
-        # }
+       
         print("Notification message kwargs:", message_kwargs)
         notification = Notification.objects.create(
             recipient=recipient,
@@ -85,6 +80,7 @@ class NotificationService:
                 'requester_id': transport_request.requester.id,
                 'destination': transport_request.destination,
                 'date': transport_request.start_day.strftime('%Y-%m-%d'),
+                'rejection_reason': transport_request.rejection_message,
                 'passengers': passengers_str,
                 **kwargs
             }
@@ -123,9 +119,6 @@ class NotificationService:
     def clean_old_notifications(cls, days: int = 90) -> int:
         """
         Clean notifications older than specified days
-        """
-        from django.utils import timezone
-        from datetime import timedelta
-        
+        """    
         cutoff_date = timezone.now() - timedelta(days=days)
         return Notification.objects.filter(created_at__lt=cutoff_date).delete()[0]
