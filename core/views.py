@@ -138,7 +138,7 @@ class TransportRequestActionView(APIView):
         if action not in ['forward', 'reject', 'approve']:
             return Response({"error": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if transport_request.requester.department != request.user.department:
+        if request.user.role == User.DEPARTMENT_MANAGER and transport_request.requester.department != request.user.department:
             return Response(
                 {"error": "You can only manage requests from employees in your department."},
                 status=status.HTTP_403_FORBIDDEN
