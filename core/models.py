@@ -90,7 +90,6 @@ class TransportRequest(models.Model):
     reason = models.TextField()
     employees = models.ManyToManyField(User, related_name='travel_group')
     vehicle = models.ForeignKey(Vehicle, null=True, blank=True, on_delete=models.SET_NULL)
-    # driver = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='assigned_requests')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     current_approver_role = models.PositiveSmallIntegerField(choices=User.ROLE_CHOICES, default=User.DEPARTMENT_MANAGER)
     rejection_message = models.TextField(blank=True, null=True)
@@ -143,3 +142,15 @@ class Notification(models.Model):
     def mark_as_read(self):
         self.is_read = True
         self.save()
+
+class TransportRequestActionLog(models.Model):
+    transport_request = models.ForeignKey(TransportRequest, on_delete=models.CASCADE, related_name='action_logs')
+    action_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    action = models.CharField(
+        max_length=20,
+        choices=[('forwarded', 'Forwarded'), ('approved', 'Approved'), ('rejected', 'Rejected')]
+    )
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.action_by.get_full_name()} {self.action} {self.transport_request.destination} on {self.timestamp}"

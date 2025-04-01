@@ -108,13 +108,13 @@ class TransportRequestListView(generics.ListAPIView):
         if user.role == user.DEPARTMENT_MANAGER:
             return TransportRequest.objects.filter(status='pending',requester__department=user.department)
         elif user.role == user.TRANSPORT_MANAGER:
-            return TransportRequest.objects.filter(status='forwarded')
+            return TransportRequest.objects.filter(status='forwarded',current_approver_role=User.TRANSPORT_MANAGER)
         elif user.role == user.CEO:
             # CEO can see all approved requests
-            return TransportRequest.objects.filter(status='forwarded',current_approver_role=User.TRANSPORT_MANAGER)
+            return TransportRequest.objects.filter(status='forwarded',current_approver_role=User.CEO)
         elif user.role == user.FINANCE_MANAGER:
             # Finance manager sees approved requests
-            return TransportRequest.objects.filter(status='forwarded',current_approver_role=User.CEO)
+            return TransportRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)
         # Regular users see their own requests
         return TransportRequest.objects.filter(requester=user)
 
@@ -122,171 +122,98 @@ class TransportRequestListView(generics.ListAPIView):
 class TransportRequestActionView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_next_approver_role(self, current_role):
+        """Determine the next approver based on hierarchy."""
+        role_hierarchy = {
+            User.DEPARTMENT_MANAGER: User.TRANSPORT_MANAGER,
+            User.TRANSPORT_MANAGER: User.CEO,
+            User.CEO: User.FINANCE_MANAGER,
+            User.FINANCE_MANAGER: User.TRANSPORT_MANAGER,
+        }
+        return role_hierarchy.get(current_role, None)  
     def post(self, request, request_id):
         transport_request = get_object_or_404(TransportRequest, id=request_id)
         action = request.data.get("action")
 
-        try:
-            if action not in ['forward', 'reject', 'approve']:
-                return Response({"error": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
+        if action not in ['forward', 'reject', 'approve']:
+            return Response({"error": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Department Manager Actions
-            if transport_request.requester.department != request.user.department:
-                return Response(
-                    {"error": "You can only manage requests from employees in your department."},
-                    status=status.HTTP_403_FORBIDDEN
-                )
-            if request.user.role == User.DEPARTMENT_MANAGER and transport_request.current_approver_role == User.DEPARTMENT_MANAGER:
-                if action == 'forward':
-                    transport_request.status = 'forwarded'
-                    transport_request.current_approver_role = User.TRANSPORT_MANAGER
-                    # Notify Transport Manager
-                    transport_managers = User.objects.filter(role=User.TRANSPORT_MANAGER, is_active=True)
-                    for manager in transport_managers:
-                        NotificationService.create_notification(
-                            'forwarded',
-                            transport_request,
-                            manager
-                        )
-                elif action == 'reject':
-                    transport_request.status = 'rejected'
-                    transport_request.rejection_message = request.data.get("rejection_message", "")
-                    # Notify requester of rejection
-                    NotificationService.create_notification(
-                        'rejected',
-                        transport_request,
-                        transport_request.requester,
-                        rejector=request.user.full_name
-                    )
-                else:
-                    return Response({"error": "Department Managers can only forward or reject."}, status=status.HTTP_403_FORBIDDEN)
+        if transport_request.requester.department != request.user.department:
+            return Response(
+                {"error": "You can only manage requests from employees in your department."},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
-            # Transport Manager Actions
-            elif request.user.role == User.TRANSPORT_MANAGER and transport_request.current_approver_role == User.TRANSPORT_MANAGER:
-                if action == 'approve':
+        current_role = request.user.role
+        if current_role != transport_request.current_approver_role:
+            return Response({"error": "You are not authorized to act on this request."}, status=status.HTTP_403_FORBIDDEN)
 
-                    vehicle_id = request.data.get("vehicle_id")
-                    vehicle = Vehicle.objects.select_related("driver").get(id=vehicle_id)
-                    print(vehicle)
-                    if TransportRequest.objects.filter(vehicle=vehicle, status='approved').exists():
-                        return Response({"error": "Vehicle is already assigned to another request."}, status=status.HTTP_400_BAD_REQUEST)
-                    if not vehicle.driver:
-                        return Response({"error": "Selected vehicle does not have an assigned driver."}, status=status.HTTP_400_BAD_REQUEST)
-                    driver_name = vehicle.driver.full_name
-                    print(driver_name)
-                                     
-                    # employees_list = ", ".join(transport_request.employees.values_list('full_name', flat=True))  # Get employee names
-                    
-                    # Notify requester and driver
-                    NotificationService.create_notification(
-                    'approved',
-                    transport_request,
-                    transport_request.requester,
-                    approver=request.user.full_name,
-                    vehicle=f"{vehicle.model} ({vehicle.license_plate})",  # Include both model and plate
-                    driver=vehicle.driver.full_name,
-                    destination=transport_request.destination,
-                    date=transport_request.start_day.strftime('%Y-%m-%d'),
-                    start_time=transport_request.start_time.strftime('%H:%M')
-                )
+        if action == 'forward':
+            next_role = self.get_next_approver_role(current_role)
+            if not next_role:
+                return Response({"error": "No further approver available."}, status=status.HTTP_400_BAD_REQUEST)
 
-                    NotificationService.create_notification(
-                        'assigned',
-                        transport_request,
-                        vehicle.driver,  # Pass the User instance, not just the name
-                        vehicle=f"{vehicle.model} ({vehicle.license_plate})",  # Include vehicle details
-                        destination=transport_request.destination,
-                        date=transport_request.start_day.strftime('%Y-%m-%d'),
-                        start_time=transport_request.start_time.strftime('%H:%M'))
-                    
-                    transport_request.vehicle = vehicle
-                    transport_request.status = 'approved' 
-                    vehicle.mark_as_in_use()  
+            transport_request.status = 'forwarded'
+            transport_request.current_approver_role = next_role
 
-                elif action == 'reject':
-                    transport_request.status = 'rejected'
-                    transport_request.rejection_message = request.data.get("rejection_message", "")
-                    NotificationService.create_notification(
-                        'rejected',
-                        transport_request,
-                        transport_request.requester,
-                        rejector=request.user.full_name
-                    )
-                elif action == 'forward':
-                    transport_request.status = 'forwarded'
-                    transport_request.current_approver_role = User.CEO
-                    # Notify CEO
-                    ceos = User.objects.filter(role=User.CEO, is_active=True)
-                    for ceo in ceos:
-                        NotificationService.create_notification(
-                            'forwarded',
-                            transport_request,
-                            ceo
-                        )
-                else:
-                    return Response({"error": "Transport Managers can approve, reject, or forward."}, status=status.HTTP_403_FORBIDDEN)
+            # Notify the next approver
+            next_approvers = User.objects.filter(role=next_role, is_active=True)
+            for approver in next_approvers:
+                NotificationService.create_notification('forwarded', transport_request, approver)
 
-            # CEO Actions
-            elif request.user.role == User.CEO and transport_request.current_approver_role == User.CEO:
-                if action == 'forward':
-                    transport_request.status = 'forwarded'
-                    transport_request.current_approver_role = User.FINANCE_MANAGER
-                    # Notify Finance Manager
-                    finance_managers = User.objects.filter(role=User.FINANCE_MANAGER, is_active=True)
-                    for manager in finance_managers:
-                        NotificationService.create_notification(
-                            'forwarded',
-                            transport_request,
-                            manager
-                        )
-                elif action == 'reject':
-                    transport_request.status = 'rejected'
-                    transport_request.rejection_message = request.data.get("rejection_message", "")
-                    NotificationService.create_notification(
-                        'rejected',
-                        transport_request,
-                        transport_request.requester,
-                        rejector=request.user.full_name
-                    )
-                else:
-                    return Response({"error": "CEOs can only forward or reject."}, status=status.HTTP_403_FORBIDDEN)
+        elif action == 'reject':
+            transport_request.status = 'rejected'
+            transport_request.rejection_message = request.data.get("rejection_message", "")
 
-            # Finance Manager Actions
-            elif request.user.role == User.FINANCE_MANAGER and transport_request.current_approver_role == User.FINANCE_MANAGER:
-                if action == 'forward':
-                    transport_request.status = 'forwarded'
-                    transport_request.current_approver_role = User.TRANSPORT_MANAGER
-                    # Notify Transport Manager and requester
-                    transport_managers = User.objects.filter(role=User.TRANSPORT_MANAGER, is_active=True)
-                    for manager in transport_managers:
-                        NotificationService.create_notification(
-                            'forwarded',
-                            transport_request,
-                            manager
-                        )
-                    # NotificationService.create_notification(
-                    #     'approved',
-                    #     transport_request,
-                    #     transport_request.requester,
-                    #     approver=request.user.full_name
-                    # )
-                elif action == 'reject':
-                    transport_request.status = 'rejected'
-                    transport_request.rejection_message = request.data.get("rejection_message", "")
-                    NotificationService.create_notification(
-                        'rejected',
-                        transport_request,
-                        transport_request.requester,
-                        rejector=request.user.full_name
-                    )
-                else:
-                    return Response({"error": "Finance Managers can only forward or reject."}, status=status.HTTP_403_FORBIDDEN)
+            # Notify requester of rejection
+            NotificationService.create_notification(
+                'rejected', transport_request, transport_request.requester, rejector=request.user.full_name
+            )
 
-            transport_request.save()
-            return Response({"message": f"Request {action}ed successfully."}, status=status.HTTP_200_OK)
+        elif action == 'approve' and current_role == User.TRANSPORT_MANAGER:
+            vehicle_id = request.data.get("vehicle_id")
+            vehicle = Vehicle.objects.select_related("driver").filter(id=vehicle_id).first()
 
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            if not vehicle:
+                return Response({"error": "Invalid vehicle ID."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if TransportRequest.objects.filter(vehicle=vehicle, status='approved').exists():
+                return Response({"error": "Vehicle is already assigned to another request."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if not vehicle.driver:
+                return Response({"error": "Selected vehicle does not have an assigned driver."}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Notify requester and driver
+            NotificationService.create_notification(
+                'approved', transport_request, transport_request.requester,
+                approver=request.user.full_name, vehicle=f"{vehicle.model} ({vehicle.license_plate})",
+                driver=vehicle.driver.full_name, destination=transport_request.destination,
+                date=transport_request.start_day.strftime('%Y-%m-%d'), start_time=transport_request.start_time.strftime('%H:%M')
+            )
+
+            NotificationService.create_notification(
+                'assigned', transport_request, vehicle.driver,
+                vehicle=f"{vehicle.model} ({vehicle.license_plate})", destination=transport_request.destination,
+                date=transport_request.start_day.strftime('%Y-%m-%d'), start_time=transport_request.start_time.strftime('%H:%M')
+            )
+
+            transport_request.vehicle = vehicle
+            transport_request.status = 'approved'
+            vehicle.mark_as_in_use()
+
+        else:
+            return Response({"error": f"{current_role} cannot perform {action}."}, status=status.HTTP_403_FORBIDDEN)
+
+        transport_request.save()
+        return Response({"message": f"Request {action}ed successfully."}, status=status.HTTP_200_OK)
+
+class TransportRequestHistoryView(generics.ListAPIView):
+    serializer_class = TransportRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return TransportRequest.objects.filter(action_logs__action_by=user).distinct()
 
 
 class NotificationListView(APIView):
