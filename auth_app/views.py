@@ -259,10 +259,9 @@ class UserStatusHistoryViewSet(viewsets.ReadOnlyModelViewSet):
             return UserStatusHistory.objects.all().order_by('-timestamp')
         return UserStatusHistory.objects.filter(user=user).order_by('-timestamp')
 class UserListView(generics.ListAPIView):
-    queryset = User.objects.all()
+    queryset = User.objects.filter(role = User.EMPLOYEE)
     serializer_class = UserListSerializer
     permission_classes = [permissions.IsAuthenticated]
-
 
 class DepartmentEmployeesView(generics.ListAPIView):
     serializer_class = UserDetailSerializer

@@ -65,7 +65,7 @@ class UserDetailSerializer(serializers.ModelSerializer):
 class UserListSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'full_name']
+        fields = ['id', 'full_name','role']
 
 
 class UserStatusHistorySerializer(serializers.ModelSerializer):
