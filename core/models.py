@@ -118,6 +118,7 @@ class Notification(models.Model):
 
     recipient = models.ForeignKey('auth_app.User', on_delete=models.CASCADE, related_name='notifications')
     transport_request = models.ForeignKey(TransportRequest, on_delete=models.CASCADE, related_name='notifications')
+    maintenance_request = models.ForeignKey("MaintenanceRequest", null=True, blank=True, on_delete=models.CASCADE)
     notification_type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES)
     title = models.CharField(max_length=200)
     message = models.TextField()
@@ -154,3 +155,24 @@ class TransportRequestActionLog(models.Model):
 
     def __str__(self):
         return f"{self.action_by.get_full_name()} {self.action} {self.transport_request.destination} on {self.timestamp}"
+    
+class MaintenanceRequest(models.Model):
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("forwarded", "Forwarded"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+    ]
+
+    requester = models.ForeignKey(User, on_delete=models.CASCADE)  
+    requesters_car = models.ForeignKey(Vehicle, on_delete=models.CASCADE)  
+    reason = models.TextField()  
+    date = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")  
+    current_approver_role = models.PositiveSmallIntegerField(choices=User.ROLE_CHOICES, default=User.TRANSPORT_MANAGER)  
+    rejection_message = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)  
+    updated_at = models.DateTimeField(auto_now=True) 
+
+    def __str__(self):
+        return f"{self.requester} - {self.status} - {self.requesters_car}"

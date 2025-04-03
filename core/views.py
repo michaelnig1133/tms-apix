@@ -6,8 +6,8 @@ from rest_framework.response import Response
 from auth_app.permissions import IsTransportManager
 from auth_app.serializers import UserDetailSerializer
 from core import serializers
-from core.models import TransportRequest, Vehicle, Notification
-from core.serializers import TransportRequestSerializer, NotificationSerializer, VehicleSerializer
+from core.models import MaintenanceRequest, TransportRequest, Vehicle, Notification
+from core.serializers import MaintenanceRequestSerializer, TransportRequestSerializer, NotificationSerializer, VehicleSerializer
 from core.services import NotificationService
 from auth_app.models import User
 import logging
@@ -53,22 +53,6 @@ class AvailableDriversView(APIView):
         serializer = UserDetailSerializer(drivers, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-# class TransportRequestCreateView(generics.CreateAPIView):
-#     queryset = TransportRequest.objects.all()
-#     serializer_class = TransportRequestSerializer
-#     permission_classes = [permissions.IsAuthenticated]
-    
-#     def perform_create(self, serializer):
-#         transport_request = serializer.save(requester=self.request.user)
-        
-#         # Notify department manager
-#         department = self.request.user.department
-#         if department and department.department_manager:
-#             NotificationService.create_notification(
-#                 'new_request',
-#                 transport_request,
-#                 department.department_manager
-#             )
 
 class TransportRequestCreateView(generics.CreateAPIView):
     queryset = TransportRequest.objects.all()
@@ -117,6 +101,136 @@ class TransportRequestListView(generics.ListAPIView):
             return TransportRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)
         # Regular users see their own requests
         return TransportRequest.objects.filter(requester=user)
+    
+class MaintenanceRequestCreateView(generics.CreateAPIView):
+    serializer_class = MaintenanceRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        """Override to set requester and their assigned vehicle automatically."""
+        user = self.request.user
+        if not hasattr(user, 'assigned_vehicle') or user.assigned_vehicle is None:
+            raise serializers.ValidationError({"error": "You do not have an assigned vehicle."})
+
+        transport_manager = User.objects.filter(role=User.TRANSPORT_MANAGER, is_active=True).first()
+
+        if not transport_manager:
+            raise serializers.ValidationError({"error": "No active Transport Manager found."})
+
+        # Save the maintenance request
+        maintenance_request = serializer.save(requester=user, requesters_car=user.assigned_vehicle)
+
+        # # Now correctly call the notification service with the correct parameters
+        # NotificationService.send_maintenance_notification(
+        #     notification_type='new_maintenance',
+        #     maintenance_request=maintenance_request,  # MaintenanceRequest instance
+        #     recipient=transport_manager  # Recipient (User instance)
+        # )
+
+
+
+class MaintenanceRequestListView(generics.ListAPIView):
+    queryset = MaintenanceRequest.objects.all()
+    serializer_class = MaintenanceRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == user.TRANSPORT_MANAGER:
+            return MaintenanceRequest.objects.filter(status='pending')
+        elif user.role == user.CEO:
+            return MaintenanceRequest.objects.filter(status='forwarded',current_approver_role=User.CEO)
+        elif user.role == user.FINANCE_MANAGER:
+            # Finance manager sees approved requests
+            return MaintenanceRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)
+        return MaintenanceRequest.objects.filter(requester=user)
+    
+
+
+class MaintenanceRequestActionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_next_approver_role(self, current_role):
+        """Determine the next approver based on hierarchy."""
+        role_hierarchy = {
+            User.TRANSPORT_MANAGER: User.CEO,
+            User.CEO: User.FINANCE_MANAGER,
+            User.FINANCE_MANAGER: User.TRANSPORT_MANAGER,  # Sends back to Transport Manager for final approval
+        }
+        return role_hierarchy.get(current_role, None)
+
+    def post(self, request, request_id):
+        maintenance_request = get_object_or_404(MaintenanceRequest, id=request_id)
+        action = request.data.get("action")
+
+        if action not in ['forward', 'reject', 'approve']:
+            return Response({"error": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
+
+        current_role = request.user.role
+        print("CURRENT ROLE",current_role)
+        logger.info(f"CURRENT ROLE: {current_role}, Action: {action}, Request Status: {maintenance_request.status}")
+
+        if current_role != maintenance_request.current_approver_role:
+            return Response({"error": "You are not authorized to act on this request."}, status=status.HTTP_403_FORBIDDEN)
+
+        # ====== FORWARD ACTION ======
+        if action == 'forward':
+            next_role = self.get_next_approver_role(current_role)
+            if not next_role:
+                return Response({"error": "No further approver available."}, status=status.HTTP_400_BAD_REQUEST)
+
+            maintenance_request.status = 'forwarded'
+            maintenance_request.current_approver_role = next_role
+            maintenance_request.save()
+
+            # # Notify the next approver
+            # next_approvers = User.objects.filter(role=next_role, is_active=True)
+            # for approver in next_approvers:
+            #     NotificationService.send_maintenance_notification(
+            #         'maintenance_forwarded', maintenance_request, approver
+            #     )
+
+            # return Response({"message": "Request forwarded successfully."}, status=status.HTTP_200_OK)
+
+        # ====== REJECT ACTION ======
+        elif action == 'reject':
+            rejection_message = request.data.get("rejection_message", "").strip()
+            if not rejection_message:
+                return Response({"error": "Rejection message is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+            maintenance_request.status = 'rejected'
+            maintenance_request.rejection_message = rejection_message
+            maintenance_request.save()
+
+            # # Notify requester of rejection
+            # NotificationService.send_maintenance_notification(
+            #     'maintenance_rejected', maintenance_request, maintenance_request.requester,
+            #     rejector=request.user.full_name, rejection_reason=rejection_message
+            # )
+
+            # return Response({"message": "Request rejected successfully."}, status=status.HTTP_200_OK)
+
+        # ====== APPROVE ACTION ======
+        elif action == 'approve':
+            if current_role == User.TRANSPORT_MANAGER and maintenance_request.current_approver_role == User.TRANSPORT_MANAGER:
+                # Final approval by Transport Manager after Finance Manager has approved
+                maintenance_request.status = 'approved'
+                maintenance_request.save()
+
+                # # Notify the original requester of approval
+                # NotificationService.send_maintenance_notification(
+                #     'maintenance_approved', maintenance_request, maintenance_request.requester,
+                #     approver=request.user.full_name
+                # )
+
+                # return Response({"message": "Request approved successfully."}, status=status.HTTP_200_OK)
+
+            else:
+                return Response({"error": f"{request.user.get_role_display()} cannot approve this request at this stage."}, 
+                                status=status.HTTP_403_FORBIDDEN)
+        else:
+             Response({"error": "Unexpected error occurred."}, status=status.HTTP_400_BAD_REQUEST)
+        return  Response({"message": f"Request {action}ed successfully."}, status=status.HTTP_200_OK)
 
 
 class TransportRequestActionView(APIView):

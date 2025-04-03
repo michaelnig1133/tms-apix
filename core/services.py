@@ -2,7 +2,7 @@ from django.utils.translation import gettext as _
 from django.utils import timezone
 from datetime import timedelta
 from auth_app.models import User
-from core.models import TransportRequest, Notification
+from core.models import MaintenanceRequest, TransportRequest, Notification
 
 
 class NotificationService:
@@ -37,6 +37,27 @@ class NotificationService:
                  "Destination: {destination}, Date: {date}, Start Time: {start_time}. "
                  "Passengers: {passengers}. Please be prepared."),
             'priority': 'normal'
+        },
+        'new_maintenance': {
+            'title': _("New Maintenance Request"),
+            'message': _("{requester} has submitted a new maintenance request."),
+            'priority': 'normal'
+        },
+        'maintenance_forwarded': {
+            'title': _("Maintenance Request Forwarded"),
+            'message': _("Maintenance request #{request_id} has been forwarded for your approval."),
+            'priority': 'normal'
+        },
+        'maintenance_approved': {
+            'title': _("Maintenance Request Approved"),
+            'message': _("Your maintenance request #{request_id} has been approved by {approver}."),
+            'priority': 'normal'
+        },
+        'maintenance_rejected': {
+            'title': _("Maintenance Request Rejected"),
+            'message': _("Your maintenance request #{request_id} has been rejected by {rejector}. "
+                         "Rejection Reason: {rejection_reason}."),
+            'priority': 'high'
         }
     }
 
@@ -85,6 +106,36 @@ class NotificationService:
                 **kwargs
             }
         )
+        return notification
+    
+    @classmethod
+    def send_maintenance_notification(cls, notification_type: str, maintenance_request: MaintenanceRequest, recipient: User, **kwargs):
+        """
+        Send a notification specifically for maintenance requests without affecting transport request logic.
+        """
+        template = cls.NOTIFICATION_TEMPLATES.get(notification_type)
+        if not template:
+            raise ValueError(f"Invalid notification type: {notification_type}")
+
+        request_data = {
+            'request_id': maintenance_request.id,
+            'requester': maintenance_request.requester.full_name,
+            'rejector': kwargs.get('rejector', 'Unknown'),
+            'rejection_reason': maintenance_request.rejection_message or "No reason provided.",
+            **kwargs
+        }
+
+        notification = Notification.objects.create(
+            recipient=recipient,
+            maintenance_request=maintenance_request,
+            notification_type=notification_type,
+            title=template['title'],
+            message=template['message'].format(**request_data),
+            priority=template['priority'],
+            action_required=notification_type not in ['maintenance_approved', 'maintenance_rejected'],
+            metadata=request_data
+        )
+
         return notification
 
     @classmethod

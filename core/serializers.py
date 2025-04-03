@@ -3,7 +3,7 @@ from rest_framework import serializers
 from auth_app.models import User
 from django.utils.timezone import now 
 from auth_app.serializers import UserDetailSerializer
-from core.models import TransportRequest, Vehicle, Notification
+from core.models import MaintenanceRequest, TransportRequest, Vehicle, Notification
 
 class TransportRequestSerializer(serializers.ModelSerializer):
     requester = serializers.ReadOnlyField(source='requester.get_full_name')
@@ -76,3 +76,27 @@ class NotificationSerializer(serializers.ModelSerializer):
             'metadata', 'created_at'
         ]
         read_only_fields = fields
+
+
+
+class MaintenanceRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MaintenanceRequest
+        fields = ['id', 'requester', 'requesters_car', 'date', 'reason', 'status', 'current_approver_role']
+        read_only_fields = ['requester', 'requesters_car', 'status', 'current_approver_role']
+
+    def validate(self, data):
+        """Ensure the user has an assigned vehicle."""
+        user = self.context['request'].user
+        if not hasattr(user, 'assigned_vehicle') or user.assigned_vehicle is None:
+            raise serializers.ValidationError("You do not have an assigned vehicle.")
+        return data
+
+    def create(self, validated_data):
+        """Automatically set requester, car, and default statuses."""
+        user = self.context['request'].user
+        validated_data['requester'] = user
+        validated_data['requesters_car'] = user.assigned_vehicle
+        validated_data['status'] = 'pending'
+        validated_data['current_approver_role'] = user.TRANSPORT_MANAGER  # Default approver
+        return super().create(validated_data)
