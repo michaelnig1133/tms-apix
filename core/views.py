@@ -49,7 +49,7 @@ class AvailableDriversView(APIView):
     permission_classes = [IsTransportManager]
 
     def get(self, request):
-        drivers = User.objects.exclude(role__in=[User.SYSTEM_ADMIN,User.EMPLOYEE])  # Only fetch unassigned drivers
+        drivers = User.objects.exclude(role__in=[User.SYSTEM_ADMIN,User.EMPLOYEE])  
         drivers=drivers.filter(assigned_vehicle__isnull=True)
         serializer = UserDetailSerializer(drivers, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
@@ -121,12 +121,12 @@ class MaintenanceRequestCreateView(generics.CreateAPIView):
         # Save the maintenance request
         maintenance_request = serializer.save(requester=user, requesters_car=user.assigned_vehicle)
 
-        # # Now correctly call the notification service with the correct parameters
-        # NotificationService.send_maintenance_notification(
-        #     notification_type='new_maintenance',
-        #     maintenance_request=maintenance_request,  # MaintenanceRequest instance
-        #     recipient=transport_manager  # Recipient (User instance)
-        # )
+        # Now correctly call the notification service with the correct parameters
+        NotificationService.send_maintenance_notification(
+            notification_type='new_maintenance',
+            maintenance_request=maintenance_request,  # MaintenanceRequest instance
+            recipient=transport_manager  # Recipient (User instance)
+        )
 
 
 
@@ -185,13 +185,13 @@ class MaintenanceRequestActionView(APIView):
             maintenance_request.save()
 
             # # Notify the next approver
-            # next_approvers = User.objects.filter(role=next_role, is_active=True)
-            # for approver in next_approvers:
-            #     NotificationService.send_maintenance_notification(
-            #         'maintenance_forwarded', maintenance_request, approver
-            #     )
+            next_approvers = User.objects.filter(role=next_role, is_active=True)
+            for approver in next_approvers:
+                NotificationService.send_maintenance_notification(
+                    'maintenance_forwarded', maintenance_request, approver
+                )
 
-            # return Response({"message": "Request forwarded successfully."}, status=status.HTTP_200_OK)
+            return Response({"message": "Request forwarded successfully."}, status=status.HTTP_200_OK)
 
         # ====== REJECT ACTION ======
         elif action == 'reject':
@@ -204,12 +204,12 @@ class MaintenanceRequestActionView(APIView):
             maintenance_request.save()
 
             # # Notify requester of rejection
-            # NotificationService.send_maintenance_notification(
-            #     'maintenance_rejected', maintenance_request, maintenance_request.requester,
-            #     rejector=request.user.full_name, rejection_reason=rejection_message
-            # )
+            NotificationService.send_maintenance_notification(
+                'maintenance_rejected', maintenance_request, maintenance_request.requester,
+                rejector=request.user.full_name, rejection_reason=rejection_message
+            )
 
-            # return Response({"message": "Request rejected successfully."}, status=status.HTTP_200_OK)
+            return Response({"message": "Request rejected successfully."}, status=status.HTTP_200_OK)
 
         # ====== APPROVE ACTION ======
         elif action == 'approve':
@@ -219,12 +219,12 @@ class MaintenanceRequestActionView(APIView):
                 maintenance_request.save()
 
                 # # Notify the original requester of approval
-                # NotificationService.send_maintenance_notification(
-                #     'maintenance_approved', maintenance_request, maintenance_request.requester,
-                #     approver=request.user.full_name
-                # )
+                NotificationService.send_maintenance_notification(
+                    'maintenance_approved', maintenance_request, maintenance_request.requester,
+                    approver=request.user.full_name
+                )
 
-                # return Response({"message": "Request approved successfully."}, status=status.HTTP_200_OK)
+                return Response({"message": "Request approved successfully."}, status=status.HTTP_200_OK)
 
             else:
                 return Response({"error": f"{request.user.get_role_display()} cannot approve this request at this stage."}, 

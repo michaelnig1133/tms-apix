@@ -117,9 +117,9 @@ class Notification(models.Model):
     )
 
     recipient = models.ForeignKey('auth_app.User', on_delete=models.CASCADE, related_name='notifications')
-    transport_request = models.ForeignKey(TransportRequest, on_delete=models.CASCADE, related_name='notifications')
+    transport_request = models.ForeignKey(TransportRequest, on_delete=models.CASCADE, related_name='notifications', null=True, blank=True)
     maintenance_request = models.ForeignKey("MaintenanceRequest", null=True, blank=True, on_delete=models.CASCADE)
-    notification_type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES)
+    notification_type = models.CharField(max_length=100, choices=NOTIFICATION_TYPES)
     title = models.CharField(max_length=200)
     message = models.TextField()
     is_read = models.BooleanField(default=False)
