@@ -85,11 +85,24 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 
 class MaintenanceRequestSerializer(serializers.ModelSerializer):
+    requester_name = serializers.SerializerMethodField()
+    requesters_car_name = serializers.SerializerMethodField()
+
     class Meta:
         model = MaintenanceRequest
-        fields = ['id', 'requester', 'requesters_car', 'date', 'reason', 'status', 'current_approver_role']
-        read_only_fields = ['requester', 'requesters_car', 'status', 'current_approver_role']
+        fields = ['id', 'requester','requester_name', 'requesters_car', 'requesters_car_name', 'date', 'reason', 'status', 'current_approver_role']
+        read_only_fields = ['requester','requester_name','requesters_car', 'requesters_car_name', 'status', 'current_approver_role']
 
+
+    def get_requester_name(self, obj):
+        """Return the full name of the requester instead of their ID."""
+        return obj.requester.full_name if obj.requester else "Unknown"
+
+    def get_requesters_car_name(self, obj):
+        """Return the vehicle model and license plate instead of the car ID."""
+        if obj.requesters_car:
+            return f"{obj.requesters_car.model} ({obj.requesters_car.license_plate})"
+        return "No Assigned Vehicle"
     def validate(self, data):
         """Ensure the user has an assigned vehicle."""
         user = self.context['request'].user

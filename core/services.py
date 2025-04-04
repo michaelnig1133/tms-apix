@@ -120,6 +120,8 @@ class NotificationService:
         request_data = {
             'request_id': maintenance_request.id,
             'requester': maintenance_request.requester.full_name,
+            'requesters_car_model':maintenance_request.requesters_car.model,
+            'requesters_car_license_plate':maintenance_request.requesters_car.license_plate,
             'rejector': kwargs.get('rejector', 'Unknown'),
             'rejection_reason': maintenance_request.rejection_message or "No reason provided.",
             **kwargs
