@@ -126,8 +126,7 @@ class MaintenanceRequestCreateView(generics.CreateAPIView):
             notification_type='new_maintenance',
             maintenance_request=maintenance_request,  # MaintenanceRequest instance
             recipient=transport_manager  # Recipient (User instance)
-        )
-
+        )       
 
 
 class MaintenanceRequestListView(generics.ListAPIView):

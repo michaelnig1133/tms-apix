@@ -65,9 +65,10 @@ class VehicleSerializer(serializers.ModelSerializer):
         return value
 
 class AssignedVehicleSerializer(serializers.ModelSerializer):
+    driver_name = serializers.CharField(source="driver.full_name", read_only=True)
     class Meta:
         model = Vehicle
-        fields = ['id', 'license_plate', 'model', 'capacity', 'status', 'source', 'rental_company']
+        fields = ['id','driver_name', 'license_plate', 'model', 'capacity', 'status', 'source', 'rental_company']
 
 
 class NotificationSerializer(serializers.ModelSerializer):
