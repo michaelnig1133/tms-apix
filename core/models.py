@@ -176,3 +176,24 @@ class MaintenanceRequest(models.Model):
 
     def __str__(self):
         return f"{self.requester} - {self.status} - {self.requesters_car}"
+
+class RefuelingRequest(models.Model):
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("forwarded", "Forwarded"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+    ]
+
+    requester = models.ForeignKey(User, on_delete=models.CASCADE)  
+    requesters_car = models.ForeignKey(Vehicle, on_delete=models.CASCADE)  
+    date = models.DateTimeField(auto_now_add=True)
+    destination = models.CharField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")  
+    current_approver_role = models.PositiveSmallIntegerField(choices=User.ROLE_CHOICES, default=User.TRANSPORT_MANAGER)  
+    rejection_message = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)  
+    updated_at = models.DateTimeField(auto_now=True) 
+
+    def __str__(self):
+        return f"{self.requester} - {self.status} - {self.requesters_car.license_plate}"

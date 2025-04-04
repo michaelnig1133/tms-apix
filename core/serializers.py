@@ -3,7 +3,7 @@ from rest_framework import serializers
 from auth_app.models import User
 from django.utils.timezone import now 
 from auth_app.serializers import UserDetailSerializer
-from core.models import MaintenanceRequest, TransportRequest, Vehicle, Notification
+from core.models import MaintenanceRequest, RefuelingRequest, TransportRequest, Vehicle, Notification
 
 class TransportRequestSerializer(serializers.ModelSerializer):
     requester = serializers.ReadOnlyField(source='requester.get_full_name')
@@ -44,7 +44,7 @@ class TransportRequestSerializer(serializers.ModelSerializer):
         transport_request.employees.set(employees)  
         
         return transport_request
-        
+          
 class VehicleSerializer(serializers.ModelSerializer):
     driver_name = serializers.CharField(source="driver.full_name", read_only=True)  # Fetch driver's full name
     driver = serializers.PrimaryKeyRelatedField(
@@ -119,3 +119,28 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
         validated_data['status'] = 'pending'
         validated_data['current_approver_role'] = user.TRANSPORT_MANAGER  # Default approver
         return super().create(validated_data)
+
+class RefuelingRequestSerializer(serializers.ModelSerializer):
+    requester_name = serializers.SerializerMethodField()
+    requesters_car_name = serializers.SerializerMethodField()
+    class Meta:
+        model = RefuelingRequest
+        fields = ["id", "requester","requester_name", "requesters_car", 'requesters_car_name',"destination", "status", "current_approver_role", "created_at"]
+        read_only_fields = ['id','requester','requester_name','requesters_car', 'requesters_car_name', 'status', 'current_approver_role','created_at']
+    
+    def get_requester_name(self, obj):
+        """Return the full name of the requester instead of their ID."""
+        return obj.requester.full_name if obj.requester else "Unknown"
+
+    def get_requesters_car_name(self, obj):
+        """Return the vehicle model and license plate instead of the car ID."""
+        if obj.requesters_car:
+            return f"{obj.requesters_car.model} ({obj.requesters_car.license_plate})"
+        return "No Assigned Vehicle"
+    
+    def validate(self, data):
+        """Ensure the user has an assigned vehicle."""
+        user = self.context['request'].user
+        if not hasattr(user, 'assigned_vehicle') or user.assigned_vehicle is None:
+            raise serializers.ValidationError("You do not have an assigned vehicle.")
+        return data
