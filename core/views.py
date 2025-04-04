@@ -7,24 +7,25 @@ from auth_app.permissions import IsTransportManager
 from auth_app.serializers import UserDetailSerializer
 from core import serializers
 from core.models import MaintenanceRequest, TransportRequest, Vehicle, Notification
-from core.serializers import MaintenanceRequestSerializer, TransportRequestSerializer, NotificationSerializer, VehicleSerializer
+from core.permissions import IsAllowedVehicleUser
+from core.serializers import AssignedVehicleSerializer, MaintenanceRequestSerializer, TransportRequestSerializer, NotificationSerializer, VehicleSerializer
 from core.services import NotificationService
 from auth_app.models import User
 import logging
 
 
 logger = logging.getLogger(__name__)
-# class VehicleCreateView(APIView):
-#     permission_classes = [IsTransportManager]
+class MyAssignedVehicleView(APIView):
+    permission_classes = [permissions.IsAuthenticated,IsAllowedVehicleUser]
 
-#     def post(self,request):
-#         serializer = VehicleSerializer(data=request.data)
-#         if serializer.is_valid():
-#             serializer.save()
-#             return Response({
-#                 "message":"Vehicle successfully registered",
-#             },status=status.HTTP_201_CREATED)
-#         return Response(serializer.errors,status=status.HTTP_400_BAD_REQUEST)
+    def get(self, request):
+        try:
+            vehicle = request.user.assigned_vehicle  # Thanks to related_name='assigned_vehicle'
+        except Vehicle.DoesNotExist:
+            return Response({"message": "No vehicle assigned to you."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = AssignedVehicleSerializer(vehicle)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 class VehicleViewSet(ModelViewSet):
     queryset = Vehicle.objects.all()

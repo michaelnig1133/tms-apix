@@ -64,6 +64,11 @@ class VehicleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("This driver is already assigned to another vehicle.")
         return value
 
+class AssignedVehicleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Vehicle
+        fields = ['id', 'license_plate', 'model', 'capacity', 'status', 'source', 'rental_company']
+
 
 class NotificationSerializer(serializers.ModelSerializer):
     recipient_name = serializers.CharField(source='recipient.full_name', read_only=True)
