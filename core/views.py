@@ -100,7 +100,10 @@ class TransportRequestListView(generics.ListAPIView):
         elif user.role == user.FINANCE_MANAGER:
             # Finance manager sees approved requests
             return TransportRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)
-        # Regular users see their own requests            
+        # Regular users see their own requests         
+        elif user.role == User.DRIVER:
+        # Drivers see only the requests where they are assigned via the vehicle
+            return TransportRequest.objects.filter(vehicle__driver=user,status='approved')  # Optional: restrict to approved requests only
         return TransportRequest.objects.filter(requester=user)
     
 class MaintenanceRequestCreateView(generics.CreateAPIView):
