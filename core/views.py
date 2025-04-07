@@ -170,7 +170,7 @@ class RefuelingRequestActionView(APIView):
         role_hierarchy = {
             User.TRANSPORT_MANAGER: User.CEO,
             User.CEO: User.FINANCE_MANAGER,
-            User.FINANCE_MANAGER: User.TRANSPORT_MANAGER,  # Sends back to Transport Manager for final approval
+            # User.FINANCE_MANAGER: User.TRANSPORT_MANAGER,  # Sends back to Transport Manager for final approval
         }
         return role_hierarchy.get(current_role, None)
 
@@ -227,7 +227,7 @@ class RefuelingRequestActionView(APIView):
 
         # ====== APPROVE ACTION ======
         elif action == 'approve':
-            if current_role == User.TRANSPORT_MANAGER and refueling_request.current_approver_role == User.TRANSPORT_MANAGER:
+            if current_role == User.FINANCE_MANAGER and refueling_request.current_approver_role == User.FINANCE_MANAGER:
                 # Final approval by Transport Manager after Finance Manager has approved
                 refueling_request.status = 'approved'
                 refueling_request.save()
@@ -273,7 +273,6 @@ class MaintenanceRequestActionView(APIView):
         role_hierarchy = {
             User.TRANSPORT_MANAGER: User.CEO,
             User.CEO: User.FINANCE_MANAGER,
-            # User.FINANCE_MANAGER: User.TRANSPORT_MANAGER,  # Sends back to Transport Manager for final approval
         }
         return role_hierarchy.get(current_role, None)
 
