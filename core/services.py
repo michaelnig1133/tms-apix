@@ -2,6 +2,8 @@ from django.utils.translation import gettext as _
 from django.utils import timezone
 from datetime import timedelta
 from auth_app.models import User
+from django.contrib.contenttypes.models import ContentType
+from .models import ActionLog, RefuelingRequest
 from core.models import MaintenanceRequest, TransportRequest, Notification
 
 
@@ -58,7 +60,29 @@ class NotificationService:
             'message': _("Your maintenance request #{request_id} has been rejected by {rejector}. "
                          "Rejection Reason: {rejection_reason}."),
             'priority': 'high'
-        }
+        },
+           'new_refueling': {
+            'title': _("New Refueling Request"),
+            'message': _("{requester} has submitted a new Refueling request."),
+            'priority': 'normal'
+        },
+
+        'refueling_forwarded': {
+            'title': _("Refueling Request Forwarded"),
+            'message': _("Refueling request #{request_id} has been forwarded for your approval."),
+            'priority': 'normal'
+        },
+        'refueling_rejected': {
+            'title': _("Refueling Request Rejected"),
+            'message': _("Your refueling request #{request_id} has been rejected by {rejector}. "
+                        "Rejection Reason: {rejection_reason}."),
+            'priority': 'high'
+        },
+        'refueling_approved': {
+            'title': _("Refueling Request Approved"),
+            'message': _("Your refueling request #{request_id} has been approved by {approver}."),
+            'priority': 'normal'
+        }     
     }
 
     @classmethod
@@ -139,6 +163,37 @@ class NotificationService:
         )
 
         return notification
+    
+    @classmethod
+    def send_refueling_notification(cls, notification_type: str, refueling_request: RefuelingRequest, recipient: User, **kwargs):
+        """
+        Send a notification specifically for refueling requests.
+        """
+        template = cls.NOTIFICATION_TEMPLATES.get(notification_type)
+        if not template:
+            raise ValueError(f"Invalid notification type: {notification_type}")
+
+        request_data = {
+            'request_id': refueling_request.id,
+            'requester': refueling_request.requester.full_name,
+            'rejector': kwargs.get('rejector', 'Unknown'),
+            'approver': kwargs.get('approver', 'Unknown'),
+            'rejection_reason': refueling_request.rejection_message or "No reason provided.",
+            **kwargs
+        }
+
+        notification = Notification.objects.create(
+            recipient=recipient,
+            refueling_request=refueling_request,
+            notification_type=notification_type,
+            title=template['title'],
+            message=template['message'].format(**request_data),
+            priority=template['priority'],
+            action_required=notification_type not in ['refueling_approved', 'refueling_rejected'],
+            metadata=request_data
+        )
+        return notification
+
 
     @classmethod
     def mark_as_read(cls, notification_id: int) -> None:
@@ -175,3 +230,13 @@ class NotificationService:
         """    
         cutoff_date = timezone.now() - timedelta(days=days)
         return Notification.objects.filter(created_at__lt=cutoff_date).delete()[0]
+    
+def log_action(request_obj, user, action, remarks=None):
+    ActionLog.objects.create(
+        content_type=ContentType.objects.get_for_model(request_obj),
+        object_id=request_obj.id,
+        action_by=user,
+        action=action,
+        remarks=remarks
+    )
+

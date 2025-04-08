@@ -2,7 +2,10 @@ from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
-# from auth_app.models import User
+from django.contrib.contenttypes.models import ContentType
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.conf import settings
+
 
 User = get_user_model()
 
@@ -118,7 +121,8 @@ class Notification(models.Model):
 
     recipient = models.ForeignKey('auth_app.User', on_delete=models.CASCADE, related_name='notifications')
     transport_request = models.ForeignKey(TransportRequest, on_delete=models.CASCADE, related_name='notifications', null=True, blank=True)
-    maintenance_request = models.ForeignKey("MaintenanceRequest", null=True, blank=True, on_delete=models.CASCADE)
+    maintenance_request = models.ForeignKey("MaintenanceRequest", null=True, blank=True, on_delete=models.CASCADE,related_name='notifications')
+    refueling_request=models.ForeignKey("RefuelingRequest",null=True , blank=True, on_delete=models.CASCADE,related_name='notifications')
     notification_type = models.CharField(max_length=100, choices=NOTIFICATION_TYPES)
     title = models.CharField(max_length=200)
     message = models.TextField()
@@ -197,3 +201,24 @@ class RefuelingRequest(models.Model):
 
     def __str__(self):
         return f"{self.requester} - {self.status} - {self.requesters_car.license_plate}"
+    
+
+class ActionLog(models.Model):
+    ACTION_CHOICES = [
+        ('forwarded', 'Forwarded'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
+
+    # Generic relation to TransportRequest, MaintenanceRequest, or RefuelingRequest
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    request_object = GenericForeignKey('content_type', 'object_id')
+
+    action_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    remarks = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.action_by.get_full_name()} {self.action} {self.content_type} #{self.object_id} on {self.timestamp}"

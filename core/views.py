@@ -9,7 +9,7 @@ from core import serializers
 from core.models import MaintenanceRequest, RefuelingRequest, TransportRequest, Vehicle, Notification
 from core.permissions import IsAllowedVehicleUser
 from core.serializers import AssignedVehicleSerializer, MaintenanceRequestSerializer, RefuelingRequestSerializer, TransportRequestSerializer, NotificationSerializer, VehicleSerializer
-from core.services import NotificationService
+from core.services import NotificationService, log_action
 from auth_app.models import User
 import logging
 
@@ -145,9 +145,11 @@ class RefuelingRequestCreateView(generics.CreateAPIView):
 
         if not transport_manager:
             raise serializers.ValidationError({"error": "No active Transport Manager found."})
-        serializer.save(
-            requester=user,
-            requesters_car=user.assigned_vehicle
+        refueling_request=serializer.save(requester=user,requesters_car=user.assigned_vehicle)
+        NotificationService.send_refueling_notification(
+            notification_type='new_refueling',
+            refueling_request=refueling_request,
+            recipient=transport_manager
         )
 class RefuelingRequestListView(generics.ListAPIView):
     queryset = RefuelingRequest.objects.all()
@@ -185,8 +187,8 @@ class RefuelingRequestActionView(APIView):
             return Response({"error": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
 
         current_role = request.user.role
-        print("CURRENT ROLE",current_role)
-        logger.info(f"CURRENT ROLE: {current_role}, Action: {action}, Request Status: {refueling_request.status}")
+        # print("CURRENT ROLE",current_role)
+        # logger.info(f"CURRENT ROLE: {current_role}, Action: {action}, Request Status: {refueling_request.status}")
 
         if current_role != refueling_request.current_approver_role:
             return Response({"error": "You are not authorized to act on this request."}, status=status.HTTP_403_FORBIDDEN)
@@ -202,13 +204,11 @@ class RefuelingRequestActionView(APIView):
             refueling_request.save()
 
             # # # Notify the next approver
-            # next_approvers = User.objects.filter(role=next_role, is_active=True)
-            # for approver in next_approvers:
-            #     NotificationService.send_maintenance_notification(
-            #         'maintenance_forwarded', maintenance_request, approver
-            #     )
-
-            # return Response({"message": "Request forwarded successfully."}, status=status.HTTP_200_OK)
+            next_approvers = User.objects.filter(role=next_role, is_active=True)
+            for approver in next_approvers:
+                NotificationService.send_refueling_notification(
+                    'refueling_forwarded', refueling_request, approver
+                )
 
         # ====== REJECT ACTION ======
         elif action == 'reject':
@@ -221,13 +221,10 @@ class RefuelingRequestActionView(APIView):
             refueling_request.save()
 
             # # # Notify requester of rejection
-            # NotificationService.send_maintenance_notification(
-            #     'maintenance_rejected', maintenance_request, maintenance_request.requester,
-            #     rejector=request.user.full_name, rejection_reason=rejection_message
-            # )
-
-            # return Response({"message": "Request rejected successfully."}, status=status.HTTP_200_OK)
-
+            NotificationService.send_refueling_notification(
+                'refueling_rejected', refueling_request, refueling_request.requester,
+                rejector=request.user.full_name, rejection_reason=rejection_message
+                )
         # ====== APPROVE ACTION ======
         elif action == 'approve':
             if current_role == User.FINANCE_MANAGER and refueling_request.current_approver_role == User.FINANCE_MANAGER:
@@ -236,12 +233,10 @@ class RefuelingRequestActionView(APIView):
                 refueling_request.save()
 
                 # # # Notify the original requester of approval
-                # NotificationService.send_maintenance_notification(
-                #     'maintenance_approved', maintenance_request, maintenance_request.requester,
-                #     approver=request.user.full_name
-                # )
-
-                # return Response({"message": "Request approved successfully."}, status=status.HTTP_200_OK)
+                NotificationService.send_refueling_notification(
+                    'refueling_approved', refueling_request, refueling_request.requester,
+                    approver=request.user.full_name
+                )
 
             else:
                 return Response({"error": f"{request.user.get_role_display()} cannot approve this request at this stage."}, 
@@ -394,6 +389,7 @@ class TransportRequestActionView(APIView):
             next_approvers = User.objects.filter(role=next_role, is_active=True)
             for approver in next_approvers:
                 NotificationService.create_notification('forwarded', transport_request, approver)
+            log_action(transport_request, request.user, 'forwarded')
 
         elif action == 'reject':
             transport_request.status = 'rejected'
@@ -403,6 +399,7 @@ class TransportRequestActionView(APIView):
             NotificationService.create_notification(
                 'rejected', transport_request, transport_request.requester, rejector=request.user.full_name
             )
+            log_action(transport_request, request.user, 'rejected', remarks=transport_request.rejection_message)
 
         elif action == 'approve' and current_role == User.TRANSPORT_MANAGER:
             vehicle_id = request.data.get("vehicle_id")
@@ -434,6 +431,7 @@ class TransportRequestActionView(APIView):
             transport_request.vehicle = vehicle
             transport_request.status = 'approved'
             vehicle.mark_as_in_use()
+            log_action(transport_request, request.user, 'approved', remarks=f"Vehicle: {vehicle.license_plate}")
 
         else:
             return Response({"error": f"{current_role} cannot perform {action}."}, status=status.HTTP_403_FORBIDDEN)
