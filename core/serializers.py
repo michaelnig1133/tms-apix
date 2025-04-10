@@ -123,6 +123,7 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
 class RefuelingRequestSerializer(serializers.ModelSerializer):
     requester_name = serializers.SerializerMethodField()
     requesters_car_name = serializers.SerializerMethodField()
+    
     class Meta:
         model = RefuelingRequest
         fields = ["id", "requester","requester_name", "requesters_car", 'requesters_car_name',"destination", "status", "current_approver_role", "created_at"]
