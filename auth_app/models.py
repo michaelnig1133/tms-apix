@@ -25,6 +25,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     CEO = 5
     DRIVER = 6
     SYSTEM_ADMIN = 7
+    GENERAL_SYSTEM=8
+    BUDGET_MANAGER =9 
 
     ROLE_CHOICES = (
         (EMPLOYEE, 'Employee'),
@@ -34,6 +36,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         (CEO, 'CEO'),
         (DRIVER, 'Driver'),
         (SYSTEM_ADMIN, 'System Admin'),
+        (GENERAL_SYSTEM,'General System Excuter'),
+        (BUDGET_MANAGER,'Budget Manager')
     )
 
     id = models.AutoField(primary_key=True, editable=False)

@@ -8,11 +8,11 @@ from auth_app.serializers import UserDetailSerializer
 from core import serializers
 from core.models import MaintenanceRequest, RefuelingRequest, TransportRequest, Vehicle, Notification
 from core.permissions import IsAllowedVehicleUser
-from core.serializers import AssignedVehicleSerializer, MaintenanceRequestSerializer, RefuelingRequestSerializer, TransportRequestSerializer, NotificationSerializer, VehicleSerializer
-from core.services import NotificationService, log_action
+from core.serializers import AssignedVehicleSerializer, MaintenanceRequestSerializer, RefuelingRequestDetailSerializer, RefuelingRequestSerializer, TransportRequestSerializer, NotificationSerializer, VehicleSerializer
+from core.services import NotificationService, RefuelingEstimator, log_action
 from auth_app.models import User
 import logging
-
+from rest_framework.generics import RetrieveAPIView
 
 logger = logging.getLogger(__name__)
 class MyAssignedVehicleView(APIView):
@@ -166,16 +166,71 @@ class RefuelingRequestListView(generics.ListAPIView):
             # Finance manager sees approved requests
             return RefuelingRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)
         return RefuelingRequest.objects.filter(requester=user)
-    
+class RefuelingRequestEstimateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, request_id):
+        refueling_request = get_object_or_404(RefuelingRequest, id=request_id)
+        if request.user.role != User.TRANSPORT_MANAGER:
+            return Response({"error": "Unauthorized"}, status=403)
+
+        distance = request.data.get('estimated_distance_km')
+        price = request.data.get('fuel_price_per_liter')
+
+        if not distance or not price:
+            return Response({"error": "Distance and fuel price are required."}, status=400)
+
+        try:
+            distance = float(distance)
+            price = float(price)
+            fuel_needed, total_cost = RefuelingEstimator.calculate_fuel_cost(
+                distance, refueling_request.requesters_car, price
+            )
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+
+        refueling_request.estimated_distance_km = distance
+        refueling_request.fuel_price_per_liter = price
+        refueling_request.fuel_needed_liters = fuel_needed
+        refueling_request.total_cost = total_cost
+        refueling_request.save()
+
+        return Response({
+            "fuel_needed_liters": fuel_needed,
+            "total_cost": total_cost
+        }, status=200)
+class RefuelingRequestDetailView(RetrieveAPIView):
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = RefuelingRequestDetailSerializer
+    queryset = RefuelingRequest.objects.all()
+
+    def get(self, request, *args, **kwargs):
+        refueling_request = self.get_object()
+
+        if request.user.role not in [
+            User.TRANSPORT_MANAGER,
+            User.GENERAL_SYSTEM,
+            User.CEO,
+            User.BUDGET_MANAGER,
+            User.FINANCE_MANAGER,
+            User.DEPARTMENT_MANAGER,
+            User.DRIVER,
+        ]:
+            return Response({"error": "Access denied."}, status=403)
+
+        serializer = self.get_serializer(refueling_request)
+        return Response(serializer.data)
+
 class RefuelingRequestActionView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_next_approver_role(self, current_role):
         """Determine the next approver based on hierarchy."""
         role_hierarchy = {
-            User.TRANSPORT_MANAGER: User.CEO,
-            User.CEO: User.FINANCE_MANAGER,
-            # User.FINANCE_MANAGER: User.TRANSPORT_MANAGER,  # Sends back to Transport Manager for final approval
+            User.TRANSPORT_MANAGER: User.GENERAL_SYSTEM,
+            User.GENERAL_SYSTEM: User.CEO,
+            User.CEO: User.BUDGET_MANAGER,
+            User.BUDGET_MANAGER: User.FINANCE_MANAGER,
         }
         return role_hierarchy.get(current_role, None)
 
@@ -187,14 +242,17 @@ class RefuelingRequestActionView(APIView):
             return Response({"error": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
 
         current_role = request.user.role
-        # print("CURRENT ROLE",current_role)
-        # logger.info(f"CURRENT ROLE: {current_role}, Action: {action}, Request Status: {refueling_request.status}")
-
         if current_role != refueling_request.current_approver_role:
             return Response({"error": "You are not authorized to act on this request."}, status=status.HTTP_403_FORBIDDEN)
 
         # ====== FORWARD ACTION ======
         if action == 'forward':
+            if current_role == User.TRANSPORT_MANAGER:
+                # Ensure estimation is already completed before forwarding
+                if not refueling_request.estimated_distance_km or not refueling_request.fuel_price_per_liter:
+                    return Response({
+                        "error": "You must estimate distance and fuel price before forwarding."
+                    }, status=status.HTTP_400_BAD_REQUEST)
             next_role = self.get_next_approver_role(current_role)
             if not next_role:
                 return Response({"error": "No further approver available."}, status=status.HTTP_400_BAD_REQUEST)

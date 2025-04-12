@@ -1,9 +1,11 @@
+from decimal import Decimal
 from django.db import models
 from django.contrib.auth import get_user_model
 from django.utils.translation import gettext_lazy as _
 from django.core.exceptions import ValidationError
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.contenttypes.fields import GenericForeignKey
+from django.core.validators import MinValueValidator
 from django.conf import settings
 
 
@@ -32,12 +34,28 @@ class Vehicle(models.Model):
         (RENTED, 'Rented'),
     ]
 
+    NAPHTHA = 'naphtha'
+    BENZENE = 'benzene'
+
+    FUEL_TYPE_CHOICES = [
+        (NAPHTHA, 'Naphtha'),
+        (BENZENE, 'Benzene'),
+    ]
+
     license_plate = models.CharField(max_length=50, unique=True)
     model = models.CharField(max_length=100)
     capacity = models.IntegerField()
     source = models.CharField(max_length=20, choices=VEHICLE_SOURCE_CHOICES, default=ORGANIZATION_OWNED)
     rental_company = models.CharField(max_length=255, blank=True, null=True) 
     status = models.CharField(max_length=20, choices=VEHICLE_STATUS_CHOICES, default=AVAILABLE)
+    fuel_type = models.CharField(max_length=10, choices=FUEL_TYPE_CHOICES,default=BENZENE)
+
+    fuel_efficiency = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.1'))],
+        help_text="Distance the vehicle can travel per liter of fuel (km/L)."
+    )
     driver = models.OneToOneField(
         User, 
         on_delete=models.SET_NULL, 
@@ -196,13 +214,16 @@ class RefuelingRequest(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")  
     current_approver_role = models.PositiveSmallIntegerField(choices=User.ROLE_CHOICES, default=User.TRANSPORT_MANAGER)  
     rejection_message = models.TextField(blank=True, null=True)
+    estimated_distance_km = models.FloatField(null=True, blank=True)
+    fuel_needed_liters = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    fuel_price_per_liter = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    total_cost = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)  
     updated_at = models.DateTimeField(auto_now=True) 
 
     def __str__(self):
         return f"{self.requester} - {self.status} - {self.requesters_car.license_plate}"
     
-
 class ActionLog(models.Model):
     ACTION_CHOICES = [
         ('forwarded', 'Forwarded'),

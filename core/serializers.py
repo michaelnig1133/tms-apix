@@ -60,8 +60,13 @@ class VehicleSerializer(serializers.ModelSerializer):
         """
         Ensure the assigned user is a driver and is not already assigned to another vehicle.
         """
-        if value and Vehicle.objects.filter(driver=value).exists():
+        if not value:
+            return value
+
+        current_vehicle_id = self.instance.id if self.instance else None
+        if Vehicle.objects.filter(driver=value).exclude(id=current_vehicle_id).exists():
             raise serializers.ValidationError("This driver is already assigned to another vehicle.")
+        
         return value
 
 class AssignedVehicleSerializer(serializers.ModelSerializer):
@@ -127,7 +132,7 @@ class RefuelingRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = RefuelingRequest
         fields = ["id", "requester","requester_name", "requesters_car", 'requesters_car_name',"destination", "status", "current_approver_role", "created_at"]
-        read_only_fields = ['id','requester','requester_name','requesters_car', 'requesters_car_name', 'status', 'current_approver_role','created_at']
+        read_only_fields = ['id','requester','requester_name','requesters_car', 'requesters_car_name', 'status', 'current_approver_role','created_at',]
     
     def get_requester_name(self, obj):
         """Return the full name of the requester instead of their ID."""
@@ -138,10 +143,37 @@ class RefuelingRequestSerializer(serializers.ModelSerializer):
         if obj.requesters_car:
             return f"{obj.requesters_car.model} ({obj.requesters_car.license_plate})"
         return "No Assigned Vehicle"
-    
+   
     def validate(self, data):
         """Ensure the user has an assigned vehicle."""
         user = self.context['request'].user
         if not hasattr(user, 'assigned_vehicle') or user.assigned_vehicle is None:
             raise serializers.ValidationError("You do not have an assigned vehicle.")
         return data
+    
+class RefuelingRequestDetailSerializer(serializers.ModelSerializer):
+    requester_name = serializers.SerializerMethodField()
+    requesters_car_name = serializers.SerializerMethodField()
+    fuel_type = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = RefuelingRequest
+        fields = [
+            "id", "requester", "requester_name", "requesters_car", "requesters_car_name",
+            "destination", "date", "estimated_distance_km", "fuel_price_per_liter",
+            "fuel_needed_liters", "total_cost", "status", "current_approver_role", "created_at" ,'fuel_type'
+        ]
+        read_only_fields = fields
+
+    def get_requester_name(self, obj):
+        return obj.requester.full_name if obj.requester else "Unknown"
+
+    def get_requesters_car_name(self, obj):
+        if obj.requesters_car:
+            return f"{obj.requesters_car.model} ({obj.requesters_car.license_plate})"
+        return "No Assigned Vehicle"
+    def get_fuel_type(self,obj):
+        if obj.requesters_car and obj.requesters_car.fuel_type:
+            return obj.requesters_car.get_fuel_type_display()
+        return "Unknown"
+
