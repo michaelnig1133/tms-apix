@@ -259,14 +259,16 @@ class RefuelingRequestActionView(APIView):
 
             refueling_request.status = 'forwarded'
             refueling_request.current_approver_role = next_role
-            refueling_request.save()
-
             # # # Notify the next approver
+
             next_approvers = User.objects.filter(role=next_role, is_active=True)
             for approver in next_approvers:
                 NotificationService.send_refueling_notification(
-                    'refueling_forwarded', refueling_request, approver
+                    notification_type='refueling_forwarded',
+                    refueling_request=refueling_request,
+                    recipient=approver
                 )
+            refueling_request.save()
 
         # ====== REJECT ACTION ======
         elif action == 'reject':
