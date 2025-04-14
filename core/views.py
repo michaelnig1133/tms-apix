@@ -127,8 +127,8 @@ class MaintenanceRequestCreateView(generics.CreateAPIView):
         # Now correctly call the notification service with the correct parameters
         NotificationService.send_maintenance_notification(
             notification_type='new_maintenance',
-            maintenance_request=maintenance_request,  # MaintenanceRequest instance
-            recipient=transport_manager  # Recipient (User instance)
+            maintenance_request=maintenance_request,  
+            recipient=transport_manager  
         )       
 
 

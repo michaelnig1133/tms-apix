@@ -155,13 +155,13 @@ class RefuelingRequestDetailSerializer(serializers.ModelSerializer):
     requester_name = serializers.SerializerMethodField()
     requesters_car_name = serializers.SerializerMethodField()
     fuel_type = serializers.SerializerMethodField()
-    
+    fuel_efficiency = serializers.SerializerMethodField() 
     class Meta:
         model = RefuelingRequest
         fields = [
             "id", "requester", "requester_name", "requesters_car", "requesters_car_name",
             "destination", "date", "estimated_distance_km", "fuel_price_per_liter",
-            "fuel_needed_liters", "total_cost", "status", "current_approver_role", "created_at" ,'fuel_type'
+            "fuel_needed_liters", "total_cost", "status", "current_approver_role", "created_at" ,'fuel_type', 'fuel_efficiency'
         ]
         read_only_fields = fields
 
@@ -176,4 +176,8 @@ class RefuelingRequestDetailSerializer(serializers.ModelSerializer):
         if obj.requesters_car and obj.requesters_car.fuel_type:
             return obj.requesters_car.get_fuel_type_display()
         return "Unknown"
+    def get_fuel_efficiency(self, obj):
+        if obj.requesters_car and obj.requesters_car.fuel_efficiency is not None:
+            return f"{obj.requesters_car.fuel_efficiency} km/L"
+        return "No fuel efficiency provided for the selected vehicle"
 
