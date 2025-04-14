@@ -162,6 +162,10 @@ class RefuelingRequestListView(generics.ListAPIView):
             return RefuelingRequest.objects.filter(status='pending')
         elif user.role == user.CEO:
             return RefuelingRequest.objects.filter(status='forwarded',current_approver_role=User.CEO)
+        elif user.role == user.GENERAL_SYSTEM:
+            return RefuelingRequest.objects.filter(status="forwarded",current_approver_role=User.GENERAL_SYSTEM)
+        elif user.role == user.BUDGET_MANAGER:
+            return RefuelingRequest.objects.filter(status="forwarded",current_approver_role=User.BUDGET_MANAGER)
         elif user.role == user.FINANCE_MANAGER:
             # Finance manager sees approved requests
             return RefuelingRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)
