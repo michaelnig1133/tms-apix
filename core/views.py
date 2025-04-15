@@ -67,7 +67,7 @@ class HighCostTransportRequestCreateView(generics.CreateAPIView):
             raise serializers.ValidationError({"error": "No active CEO found."})
 
         NotificationService.send_highcost_notification(
-            notification_type='highcost_new_request',
+            notification_type='new_highcost',
             highcost_request=highcost_request,
             recipient=ceo
         )

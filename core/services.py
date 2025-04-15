@@ -84,7 +84,7 @@ class NotificationService:
             'priority': 'normal'
         },
 
-        'highcost_new_request': {
+        'new_highcost': {
         'title': _("New High-Cost Transport Request"),
         'message': _("{requester} has submitted a high-cost transport request to {destination} on {date}."),
         'priority': 'normal'
