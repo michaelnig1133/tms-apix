@@ -3,12 +3,12 @@ from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
 from rest_framework.response import Response
-from auth_app.permissions import IsTransportManager
+from auth_app.permissions import IsDepartmentManager, IsTransportManager
 from auth_app.serializers import UserDetailSerializer
 from core import serializers
-from core.models import MaintenanceRequest, RefuelingRequest, TransportRequest, Vehicle, Notification
+from core.models import HighCostTransportRequest, MaintenanceRequest, RefuelingRequest, TransportRequest, Vehicle, Notification
 from core.permissions import IsAllowedVehicleUser
-from core.serializers import AssignedVehicleSerializer, MaintenanceRequestSerializer, RefuelingRequestDetailSerializer, RefuelingRequestSerializer, TransportRequestSerializer, NotificationSerializer, VehicleSerializer
+from core.serializers import AssignedVehicleSerializer, HighCostTransportRequestSerializer, MaintenanceRequestSerializer, RefuelingRequestDetailSerializer, RefuelingRequestSerializer, TransportRequestSerializer, NotificationSerializer, VehicleSerializer
 from core.services import NotificationService, RefuelingEstimator, log_action
 from auth_app.models import User
 import logging
@@ -53,7 +53,44 @@ class AvailableDriversView(APIView):
         drivers=drivers.filter(assigned_vehicle__isnull=True)
         serializer = UserDetailSerializer(drivers, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    
+class HighCostTransportRequestCreateView(generics.CreateAPIView):
+    serializer_class = HighCostTransportRequestSerializer
+    permission_classes = [permissions.IsAuthenticated, IsDepartmentManager]
 
+    def perform_create(self, serializer):
+        requester = self.request.user
+        highcost_request = serializer.save(requester=requester)
+        
+        ceo = User.objects.filter(role=User.CEO, is_active=True).first()
+        if not ceo:
+            raise serializers.ValidationError({"error": "No active CEO found."})
+
+        NotificationService.send_highcost_notification(
+            notification_type='highcost_new_request',
+            highcost_request=highcost_request,
+            recipient=ceo
+        )
+
+class HighCostTransportRequestListView(generics.ListAPIView):
+    queryset = HighCostTransportRequest.objects.all()
+    serializer_class = HighCostTransportRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == user.CEO:
+            return HighCostTransportRequest.objects.filter(status='pending')
+        elif user.role == user.TRANSPORT_MANAGER:
+            return HighCostTransportRequest.objects.filter(status='forwarded',current_approver_role=User.TRANSPORT_MANAGER)
+        elif user.role == user.GENERAL_SYSTEM:
+            return HighCostTransportRequest.objects.filter(status="forwarded",current_approver_role=User.GENERAL_SYSTEM)
+        elif user.role == user.BUDGET_MANAGER:
+            return HighCostTransportRequest.objects.filter(status="forwarded",current_approver_role=User.BUDGET_MANAGER)
+        elif user.role == user.FINANCE_MANAGER:
+            # Finance manager sees approved requests
+            return HighCostTransportRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)
+        return HighCostTransportRequest.objects.filter(requester=user)
 
 class TransportRequestCreateView(generics.CreateAPIView):
     queryset = TransportRequest.objects.all()

@@ -120,7 +120,36 @@ class TransportRequest(models.Model):
 
     def __str__(self):
         return f"{self.requester.get_full_name()} - {self.destination} ({self.status})"
+       
+class HighCostTransportRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('forwarded', 'Forwarded'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected')
+    ]
+    
+    requester = models.ForeignKey(User, on_delete=models.CASCADE, related_name='highcost_transport_request')
+    start_day = models.DateField()
+    return_day = models.DateField()
+    start_time = models.TimeField()
+    destination = models.CharField(max_length=255)
+    reason = models.TextField()
+    employees = models.ManyToManyField(User, related_name='highcost_travel_group')
+    vehicle = models.ForeignKey(Vehicle, null=True, blank=True,  on_delete=models.SET_NULL)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    current_approver_role = models.PositiveSmallIntegerField(choices=User.ROLE_CHOICES, default=User.CEO)
+    rejection_message = models.TextField(blank=True, null=True)
+    estimated_distance_km = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    fuel_price_per_liter = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    fuel_needed_liters = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    total_cost = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
+
+    def __str__(self):
+        return f"{self.requester.get_full_name()} - {self.destination} ({self.status})"
 
 class Notification(models.Model):
     NOTIFICATION_TYPES = (
@@ -141,6 +170,7 @@ class Notification(models.Model):
     transport_request = models.ForeignKey(TransportRequest, on_delete=models.CASCADE, related_name='notifications', null=True, blank=True)
     maintenance_request = models.ForeignKey("MaintenanceRequest", null=True, blank=True, on_delete=models.CASCADE,related_name='notifications')
     refueling_request=models.ForeignKey("RefuelingRequest",null=True , blank=True, on_delete=models.CASCADE,related_name='notifications')
+    highcost_request = models.ForeignKey("HighCostTransportRequest", null=True, blank=True, on_delete=models.CASCADE, related_name='notifications')
     notification_type = models.CharField(max_length=100, choices=NOTIFICATION_TYPES)
     title = models.CharField(max_length=200)
     message = models.TextField()
@@ -210,8 +240,8 @@ class RefuelingRequest(models.Model):
     requester = models.ForeignKey(User, on_delete=models.CASCADE)  
     requesters_car = models.ForeignKey(Vehicle, on_delete=models.CASCADE)  
     date = models.DateTimeField(auto_now_add=True)
-    destination = models.CharField()
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")  
+    destination = models.CharField(max_length=1006)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")  
     current_approver_role = models.PositiveSmallIntegerField(choices=User.ROLE_CHOICES, default=User.TRANSPORT_MANAGER)  
     rejection_message = models.TextField(blank=True, null=True)
     estimated_distance_km = models.FloatField(null=True, blank=True)
@@ -231,11 +261,10 @@ class ActionLog(models.Model):
         ('rejected', 'Rejected'),
     ]
 
-    # Generic relation to TransportRequest, MaintenanceRequest, or RefuelingRequest
+    # Generic relation to TransportRequest, MaintenanceRequest, or RefuelingRequest 
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
     object_id = models.PositiveIntegerField()
     request_object = GenericForeignKey('content_type', 'object_id')
-
     action_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     action = models.CharField(max_length=20, choices=ACTION_CHOICES)
     timestamp = models.DateTimeField(auto_now_add=True)

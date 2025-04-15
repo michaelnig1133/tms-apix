@@ -3,7 +3,7 @@ from django.utils import timezone
 from datetime import timedelta
 from auth_app.models import User
 from django.contrib.contenttypes.models import ContentType
-from .models import ActionLog, RefuelingRequest
+from .models import ActionLog, HighCostTransportRequest, RefuelingRequest
 from core.models import MaintenanceRequest, TransportRequest, Notification
 
 
@@ -82,7 +82,30 @@ class NotificationService:
             'title': _("Refueling Request Approved"),
             'message': _("Your refueling request #{request_id} has been approved by {approver}."),
             'priority': 'normal'
-        }     
+        },
+
+        'highcost_new_request': {
+        'title': _("New High-Cost Transport Request"),
+        'message': _("{requester} has submitted a high-cost transport request to {destination} on {date}."),
+        'priority': 'normal'
+        },
+        'highcost_forwarded': {
+            'title': _("High-Cost Transport Request Forwarded"),
+            'message': _("High-cost transport request #{request_id} has been forwarded for your approval."),
+            'priority': 'normal'
+        },
+        'highcost_rejected': {
+            'title': _("High-Cost Transport Request Rejected"),
+            'message': _("Your high-cost transport request #{request_id} to {destination} on {date} at {start_time} "
+                        "has been rejected by {rejector}. Rejection Reason: {rejection_reason}. "
+                        "Passengers: {passengers}."),
+            'priority': 'high'
+        },
+        'highcost_approved': {
+            'title': _("High-Cost Transport Request Approved"),
+            'message': _("Your high-cost transport request #{request_id} has been approved by {approver}."),
+            'priority': 'normal'
+        }    
     }
 
     @classmethod
@@ -194,6 +217,42 @@ class NotificationService:
         )
         return notification
 
+    @classmethod
+    def send_highcost_notification(cls, notification_type: str, highcost_request: HighCostTransportRequest, recipient: User, **kwargs):
+            """
+            Send a notification specifically for high-cost transport requests.
+            """
+            template = cls.NOTIFICATION_TEMPLATES.get(notification_type)
+            if not template:
+                raise ValueError(f"Invalid notification type: {notification_type}")
+
+            passengers = list(highcost_request.employees.all())
+            passengers_str = ", ".join([p.full_name for p in passengers]) if passengers else "No additional passengers"
+
+            request_data = {
+                'request_id': highcost_request.id,
+                'requester': highcost_request.requester.full_name,
+                'destination': highcost_request.destination,
+                'date': highcost_request.start_day.strftime('%Y-%m-%d'),
+                'start_time': highcost_request.start_time.strftime('%H:%M'),
+                'rejector': kwargs.get('rejector', 'Unknown'),
+                'rejection_reason': highcost_request.rejection_message or "No reason provided.",
+                'approver': kwargs.get('approver', 'Unknown'),
+                'passengers': passengers_str,
+                **kwargs
+            }
+
+            notification = Notification.objects.create(
+                recipient=recipient,
+                highcost_request=highcost_request,
+                notification_type=notification_type,
+                title=template['title'],
+                message=template['message'].format(**request_data),
+                priority=template['priority'],
+                action_required=notification_type not in ['highcost_approved', 'highcost_rejected'],
+                metadata=request_data
+            )
+            return notification
 
     @classmethod
     def mark_as_read(cls, notification_id: int) -> None:

@@ -3,7 +3,7 @@ from rest_framework import serializers
 from auth_app.models import User
 from django.utils.timezone import now 
 from auth_app.serializers import UserDetailSerializer
-from core.models import MaintenanceRequest, RefuelingRequest, TransportRequest, Vehicle, Notification
+from core.models import HighCostTransportRequest, MaintenanceRequest, RefuelingRequest, TransportRequest, Vehicle, Notification
 
 class TransportRequestSerializer(serializers.ModelSerializer):
     requester = serializers.ReadOnlyField(source='requester.get_full_name')
@@ -181,3 +181,36 @@ class RefuelingRequestDetailSerializer(serializers.ModelSerializer):
             return f"{obj.requesters_car.fuel_efficiency} km/L"
         return "No fuel efficiency provided for the selected vehicle"
 
+class HighCostTransportRequestSerializer(serializers.ModelSerializer):
+    employees = serializers.PrimaryKeyRelatedField(many=True,queryset=User.objects.filter(role=User.EMPLOYEE))
+    requester = serializers.ReadOnlyField(source='requester.get_full_name')
+
+    class Meta:
+        model = HighCostTransportRequest
+        fields = [
+            'id','requester','start_day','return_day','start_time','destination','reason','employees','vehicle','status','current_approver_role','rejection_message','estimated_distance_km','fuel_price_per_liter','fuel_needed_liters','total_cost','created_at','updated_at'
+        ]
+    def validate(self, data):
+        """
+        Ensure return_day is not before start_day.
+        """
+        start_day = data.get("start_day")
+        return_day = data.get("return_day")
+
+        if start_day and start_day < now().date():
+            raise serializers.ValidationError({"start_day": "Start date cannot be in the past."})
+        
+        if return_day and start_day and return_day < start_day:
+            raise serializers.ValidationError({"return_day": "Return date cannot be before the start date."})
+
+        return data
+    
+    def create(self, validated_data):
+        employees = validated_data.pop('employees',[])
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            validated_data["requester"] = request.user
+
+        high_cost_request = HighCostTransportRequest.objects.create(**validated_data)
+        high_cost_request.employees.set(employees)
+        return high_cost_request
