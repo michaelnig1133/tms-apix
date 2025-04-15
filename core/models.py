@@ -140,6 +140,8 @@ class HighCostTransportRequest(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     current_approver_role = models.PositiveSmallIntegerField(choices=User.ROLE_CHOICES, default=User.CEO)
     rejection_message = models.TextField(blank=True, null=True)
+    estimated_vehicle = models.ForeignKey(Vehicle, null=True, blank=True, on_delete=models.SET_NULL, related_name='estimated_highcost_requests')
+    vehicle_assigned = models.BooleanField(default=False)
     estimated_distance_km = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     fuel_price_per_liter = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     fuel_needed_liters = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)

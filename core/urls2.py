@@ -1,6 +1,8 @@
 from django.urls import path
 
 from core.views import (
+    HighCostTransportEstimateView,
+    HighCostTransportRequestActionView,
     HighCostTransportRequestCreateView,
     HighCostTransportRequestListView,
     MaintenanceRequestActionView,
@@ -28,6 +30,8 @@ urlpatterns_refueling = [
 ]
 
 urlpatterns_highcost = [
-    path('create/', HighCostTransportRequestCreateView.as_view(), name='highcost-request-create'),
-    path('list/',HighCostTransportRequestListView.as_view(),name="list-highcost-request")
+   path('create/', HighCostTransportRequestCreateView.as_view(), name='highcost-request-create'),
+   path('list/',HighCostTransportRequestListView.as_view(),name="list-highcost-request"),
+   path('<int:request_id>/estimate/',HighCostTransportEstimateView.as_view(),name="estimate-highcost-request"),
+   path('<int:request_id>/action/',HighCostTransportRequestActionView.as_view(),name="highcost-request-action"),
 ]

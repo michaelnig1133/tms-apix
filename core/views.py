@@ -89,8 +89,150 @@ class HighCostTransportRequestListView(generics.ListAPIView):
             return HighCostTransportRequest.objects.filter(status="forwarded",current_approver_role=User.BUDGET_MANAGER)
         elif user.role == user.FINANCE_MANAGER:
             # Finance manager sees approved requests
-            return HighCostTransportRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)
+            return HighCostTransportRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)        
         return HighCostTransportRequest.objects.filter(requester=user)
+
+class HighCostTransportRequestActionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_next_approver_role(self, current_role):
+        role_hierarchy = {
+            User.CEO: User.GENERAL_SYSTEM,
+            User.GENERAL_SYSTEM: User.TRANSPORT_MANAGER,
+            User.TRANSPORT_MANAGER: User.BUDGET_MANAGER
+        }
+        return role_hierarchy.get(current_role, None)
+
+    def post(self, request, request_id):
+        highcost_request = get_object_or_404(HighCostTransportRequest, id=request_id)
+        action = request.data.get("action")
+        current_role = request.user.role
+
+        if current_role != highcost_request.current_approver_role:
+            return Response({"error": "Unauthorized action."}, status=403)
+
+        if action not in ['forward', 'reject', 'approve']:
+            return Response({"error": "Invalid action."}, status=400)
+
+        # ========== FORWARD ==========
+        if action == 'forward':
+            if current_role == User.TRANSPORT_MANAGER:
+                if not highcost_request.estimated_distance_km or not highcost_request.fuel_price_per_liter:
+                    return Response({
+                        "error": "You must estimate distance and fuel price before forwarding."
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            next_role = self.get_next_approver_role(current_role)
+            if not next_role:
+                return Response({"error": "No further approver available."}, status=400)
+
+            highcost_request.status = 'forwarded'
+            highcost_request.current_approver_role = next_role
+            highcost_request.save()
+
+            next_approvers =User.objects.filter(role=next_role, is_active=True) 
+            for approver in next_approvers:
+                NotificationService.send_highcost_notification(
+                    'highcost_forwarded',
+                    highcost_request,
+                    approver
+                )
+
+        # ========== REJECT ==========
+        elif action == 'reject':
+            rejection_message = request.data.get("rejection_message", "").strip()
+            if not rejection_message:
+                return Response({"error": "Rejection message is required."}, status=400)
+
+            highcost_request.status = 'rejected'
+            highcost_request.rejection_message = rejection_message
+            highcost_request.save()
+
+            NotificationService.send_highcost_notification(
+                'highcost_rejected',
+                highcost_request,
+                highcost_request.requester,
+                rejector=request.user.full_name,
+                rejection_reason=rejection_message
+            )
+
+        # ========== APPROVE (BUDGET_MANAGER) ==========
+        elif action == 'approve':
+            if current_role == User.BUDGET_MANAGER and highcost_request.current_approver_role == User.BUDGET_MANAGER:
+                highcost_request.status = 'approved'
+                highcost_request.save()
+
+                # Notify the requester and stakeholders
+                NotificationService.send_highcost_notification(
+                    'highcost_approved',
+                    highcost_request,
+                    highcost_request.requester
+                )
+                NotificationService.send_highcost_notification(
+                    'highcost_approved',
+                    highcost_request,
+                    User.objects.get(role=User.FINANCE_MANAGER)
+                )
+                NotificationService.send_highcost_notification(
+                    'highcost_approved',
+                    highcost_request,
+                    User.objects.get(role=User.TRANSPORT_MANAGER)
+                )
+            else:
+                return Response({"error": "Approval not allowed at this stage."}, status=403)
+
+        return Response({"message": f"Request {action}ed successfully."}, status=200)
+
+
+class HighCostTransportEstimateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, request_id):
+        if request.user.role != User.TRANSPORT_MANAGER:
+            return Response({"error": "Unauthorized: Only Transport Manager can perform this action."}, status=403)
+
+        highcost_request = get_object_or_404(HighCostTransportRequest, id=request_id)
+
+        distance = request.data.get('estimated_distance_km')
+        fuel_price = request.data.get('fuel_price_per_liter')
+        estimated_vehicle_id = request.data.get('estimated_vehicle_id')
+
+        if not distance or not fuel_price or not estimated_vehicle_id:
+            return Response({"error": "All fields are required: estimated_distance_km, fuel_price_per_liter, estimated_vehicle_id."}, status=400)
+
+        try:
+            distance = float(distance)
+            fuel_price = float(fuel_price)
+        except ValueError:
+            return Response({"error": "Distance and fuel price must be numeric."}, status=400)
+
+        # Fetch and validate vehicle
+        try:
+            vehicle = Vehicle.objects.get(id=estimated_vehicle_id)
+            if not vehicle.fuel_efficiency and vehicle.status != Vehicle.AVAILABLE:
+                return Response({"error": "Selected vehicle must have a valid fuel efficiency and must be availabel."}, status=400)
+        except Vehicle.DoesNotExist:
+            return Response({"error": "Invalid vehicle selected."}, status=404)
+
+        try:
+            fuel_needed = distance / float(vehicle.fuel_efficiency)
+            total_cost = fuel_needed * fuel_price
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+
+        # Save estimation data to request
+        highcost_request.estimated_distance_km = distance
+        highcost_request.fuel_price_per_liter = fuel_price
+        highcost_request.fuel_needed_liters = round(fuel_needed, 2)
+        highcost_request.total_cost = round(total_cost, 2)
+        highcost_request.estimated_vehicle = vehicle
+        highcost_request.save()
+
+        return Response({
+            "fuel_needed_liters": round(fuel_needed, 2),
+            "total_cost": round(total_cost, 2),
+            "estimated_vehicle": vehicle.id
+        }, status=200)
+    
 
 class TransportRequestCreateView(generics.CreateAPIView):
     queryset = TransportRequest.objects.all()
@@ -239,7 +381,7 @@ class RefuelingRequestEstimateView(APIView):
         return Response({
             "fuel_needed_liters": fuel_needed,
             "total_cost": total_cost
-        }, status=200)
+        }, status=200)   
 class RefuelingRequestDetailView(RetrieveAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = RefuelingRequestDetailSerializer
