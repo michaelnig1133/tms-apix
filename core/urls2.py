@@ -15,6 +15,7 @@ from core.views import (
     RefuelingRequestDetailView,
     RefuelingRequestEstimateView,
     RefuelingRequestListView,
+    TripCompletionView,
 )
 
 urlpatterns = [
@@ -37,5 +38,6 @@ urlpatterns_highcost = [
    path('<int:id>/', HighCostTransportRequestDetailView.as_view(), name='highcost-request-detail'),
    path('<int:request_id>/estimate/',HighCostTransportEstimateView.as_view(),name="estimate-highcost-request"),
    path('<int:request_id>/action/',HighCostTransportRequestActionView.as_view(),name="highcost-request-action"),
-   path('<int:request_id>/assign-vehicle/', AssignVehicleAfterBudgetApprovalView.as_view(),name='highcost-request-vehicle-assign')
+   path('<int:request_id>/assign-vehicle/', AssignVehicleAfterBudgetApprovalView.as_view(),name='highcost-request-vehicle-assign'),
+   path('<int:request_id>/complete-trip/', TripCompletionView.as_view(), name='complete-trip-highcost-request')
 ]

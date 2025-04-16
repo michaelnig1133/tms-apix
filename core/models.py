@@ -114,6 +114,7 @@ class TransportRequest(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     current_approver_role = models.PositiveSmallIntegerField(choices=User.ROLE_CHOICES, default=User.DEPARTMENT_MANAGER)
     rejection_message = models.TextField(blank=True, null=True)
+    trip_completed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -146,6 +147,7 @@ class HighCostTransportRequest(models.Model):
     fuel_price_per_liter = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     fuel_needed_liters = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     total_cost = models.DecimalField(max_digits=15, decimal_places=2, null=True, blank=True)
+    trip_completed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

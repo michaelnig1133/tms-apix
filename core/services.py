@@ -305,7 +305,7 @@ class RefuelingEstimator:
         if not vehicle.fuel_efficiency:
             raise ValueError("Fuel efficiency must be set.")
         fuel_needed = distance_km / float(vehicle.fuel_efficiency)
-        total_cost = fuel_needed * price_per_liter
+        total_cost = fuel_needed * price_per_liter * 2
         return round(fuel_needed, 2), round(total_cost, 2)
 
 

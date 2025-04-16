@@ -92,7 +92,9 @@ class HighCostTransportRequestListView(generics.ListAPIView):
             return HighCostTransportRequest.objects.filter(status="forwarded",current_approver_role=User.BUDGET_MANAGER)
         elif user.role == user.FINANCE_MANAGER:
             # Finance manager sees approved requests
-            return HighCostTransportRequest.objects.filter(status='approved')        
+            return HighCostTransportRequest.objects.filter(status='approved')   
+        elif user.role == User.DRIVER:
+            return HighCostTransportRequest.objects.filter(vehicle__driver=user,status='approved')  # Optional: restrict to approved requests only
         return HighCostTransportRequest.objects.filter(requester=user)
 
 class HighCostTransportRequestActionView(APIView):
@@ -331,7 +333,6 @@ class TransportRequestListView(generics.ListAPIView):
             return TransportRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)
         # Regular users see their own requests         
         elif user.role == User.DRIVER:
-        # Drivers see only the requests where they are assigned via the vehicle
             return TransportRequest.objects.filter(vehicle__driver=user,status='approved')  # Optional: restrict to approved requests only
         return TransportRequest.objects.filter(requester=user)
     
@@ -740,6 +741,38 @@ class TransportRequestHistoryView(generics.ListAPIView):
         user = self.request.user
         return TransportRequest.objects.filter(action_logs__action_by=user).distinct()
 
+class TripCompletionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, request_id):
+        if 'highcost-requests' in request.path:
+            trip_request = get_object_or_404(HighCostTransportRequest, id=request_id)
+        else:
+            trip_request = get_object_or_404(TransportRequest, id=request_id)
+
+        # Validate vehicle and driver
+        if not trip_request.vehicle:
+            return Response({"error": "Vehicle not assigned yet."}, status=400)
+
+        if trip_request.vehicle.driver != request.user:
+            return Response({"error": "Only the assigned driver can complete this trip."}, status=403)
+
+        trip_request.trip_completed=True
+        trip_request.vehicle.mark_as_available()
+        trip_request.save()
+        # Notify transport manager
+        # transport_manager = User.objects.filter(role=User.TRANSPORT_MANAGER).first()
+        # if transport_manager:
+        #     NotificationService.create_notification(
+        #         'trip_completed',
+        #         trip_request,
+        #         transport_manager,
+        #         vehicle=trip_request.vehicle.license_plate,
+        #         driver=request.user.full_name,
+        #         destination=trip_request.destination
+        #     )
+
+        return Response({"message": "Trip successfully marked as completed."}, status=200)
 
 class NotificationListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
