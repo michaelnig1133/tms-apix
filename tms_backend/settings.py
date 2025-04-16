@@ -13,11 +13,11 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 from pathlib import Path
 from datetime import timedelta
 import dj_database_url
-from dotenv import load_dotenv
 import os
+from dotenv import load_dotenv
 
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 

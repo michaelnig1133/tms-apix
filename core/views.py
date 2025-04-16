@@ -8,9 +8,11 @@ from auth_app.serializers import UserDetailSerializer
 from core import serializers
 from core.models import HighCostTransportRequest, MaintenanceRequest, RefuelingRequest, TransportRequest, Vehicle, Notification
 from core.permissions import IsAllowedVehicleUser
-from core.serializers import AssignedVehicleSerializer, HighCostTransportRequestSerializer, MaintenanceRequestSerializer, RefuelingRequestDetailSerializer, RefuelingRequestSerializer, TransportRequestSerializer, NotificationSerializer, VehicleSerializer
+from core.serializers import AssignedVehicleSerializer, HighCostTransportRequestDetailSerializer, HighCostTransportRequestSerializer, MaintenanceRequestSerializer, RefuelingRequestDetailSerializer, RefuelingRequestSerializer, TransportRequestSerializer, NotificationSerializer, VehicleSerializer
 from core.services import NotificationService, RefuelingEstimator, log_action
 from auth_app.models import User
+from django.db.models import Q
+from django.core.exceptions import ValidationError
 import logging
 from rest_framework.generics import RetrieveAPIView
 
@@ -82,14 +84,15 @@ class HighCostTransportRequestListView(generics.ListAPIView):
         if user.role == user.CEO:
             return HighCostTransportRequest.objects.filter(status='pending')
         elif user.role == user.TRANSPORT_MANAGER:
-            return HighCostTransportRequest.objects.filter(status='forwarded',current_approver_role=User.TRANSPORT_MANAGER)
+            return HighCostTransportRequest.objects.filter(
+                Q(status='forwarded', current_approver_role=User.TRANSPORT_MANAGER) | Q(status='approved', vehicle_assigned=False))
         elif user.role == user.GENERAL_SYSTEM:
             return HighCostTransportRequest.objects.filter(status="forwarded",current_approver_role=User.GENERAL_SYSTEM)
         elif user.role == user.BUDGET_MANAGER:
             return HighCostTransportRequest.objects.filter(status="forwarded",current_approver_role=User.BUDGET_MANAGER)
         elif user.role == user.FINANCE_MANAGER:
             # Finance manager sees approved requests
-            return HighCostTransportRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)        
+            return HighCostTransportRequest.objects.filter(status='approved')        
         return HighCostTransportRequest.objects.filter(requester=user)
 
 class HighCostTransportRequestActionView(APIView):
@@ -208,8 +211,10 @@ class HighCostTransportEstimateView(APIView):
         # Fetch and validate vehicle
         try:
             vehicle = Vehicle.objects.get(id=estimated_vehicle_id)
-            if not vehicle.fuel_efficiency and vehicle.status != Vehicle.AVAILABLE:
-                return Response({"error": "Selected vehicle must have a valid fuel efficiency and must be availabel."}, status=400)
+            if not vehicle.fuel_efficiency or vehicle.fuel_efficiency <= 0 or vehicle.status != Vehicle.AVAILABLE:
+                return Response({
+                    "error": "Selected vehicle must be available and have a valid fuel efficiency greater than zero."
+                }, status=400)            
         except Vehicle.DoesNotExist:
             return Response({"error": "Invalid vehicle selected."}, status=404)
 
@@ -232,7 +237,52 @@ class HighCostTransportEstimateView(APIView):
             "total_cost": round(total_cost, 2),
             "estimated_vehicle": vehicle.id
         }, status=200)
-    
+
+class AssignVehicleAfterBudgetApprovalView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, request_id):
+        highcost_request = get_object_or_404(HighCostTransportRequest, id=request_id)
+
+        if request.user.role != User.TRANSPORT_MANAGER:
+            return Response({"error": "Unauthorized"}, status=403)
+
+        if highcost_request.status != 'approved':
+            return Response({"error": "Vehicle can only be assigned after budget approval."}, status=400)
+
+        vehicle = highcost_request.estimated_vehicle
+        if vehicle.status != Vehicle.AVAILABLE:
+            return Response({"error": "Selected vehicle is not available."}, status=400)
+
+        try:
+            vehicle.mark_as_in_use()
+        except ValidationError as e:
+            return Response({"error": str(e)}, status=400)
+
+
+        # NotificationService.send_highcost_notification(
+        #       'assigned', highcost_request, highcost_request.vehicle.driver,
+        #         vehicle=f"{highcost_request.vehicle.model} ({highcost_request.vehicle.license_plate})", destination=highcost_request.destination,
+        #         date=highcost_request.start_day.strftime('%Y-%m-%d'), start_time=highcost_request.start_time.strftime('%H:%M')
+        # )
+        # NotificationService.send_highcost_notification(
+        #       'assigned', highcost_request, highcost_request.requester,
+        #         vehicle=f"{highcost_request.vehicle.model} ({highcost_request.vehicle.license_plate})", destination=highcost_request.destination,
+        #         date=highcost_request.start_day.strftime('%Y-%m-%d'), start_time=highcost_request.start_time.strftime('%H:%M')
+        # )
+
+        highcost_request.vehicle = vehicle
+        highcost_request.vehicle_assigned = True
+        highcost_request.save()
+        return Response({"message": "Vehicle assigned and status updated successfully."}, status=200)
+
+
+class HighCostTransportRequestDetailView(generics.RetrieveAPIView):
+    queryset = HighCostTransportRequest.objects.all()
+    serializer_class = HighCostTransportRequestDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'id'
+
 
 class TransportRequestCreateView(generics.CreateAPIView):
     queryset = TransportRequest.objects.all()

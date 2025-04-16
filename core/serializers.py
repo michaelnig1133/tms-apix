@@ -215,30 +215,19 @@ class HighCostTransportRequestSerializer(serializers.ModelSerializer):
         high_cost_request.employees.set(employees)
         return high_cost_request
 
-class HighCostRequestDetailSerializer(serializers.ModelSerializer):
-    requester_name = serializers.SerializerMethodField()
-    # requesters_car_name = serializers.SerializerMethodField()
-    fuel_type = serializers.SerializerMethodField()
-    fuel_efficiency = serializers.SerializerMethodField() 
+# serializers.py
+class HighCostTransportRequestDetailSerializer(serializers.ModelSerializer):
+    requester = serializers.SerializerMethodField()
+    employees = serializers.SerializerMethodField()
+    vehicle = serializers.StringRelatedField()
+    estimated_vehicle = serializers.StringRelatedField()
+
     class Meta:
         model = HighCostTransportRequest
-        fields = [
-            'id','requester','start_day','return_day','start_time','destination','reason','employees','vehicle','status','current_approver_role','rejection_message','created_at','updated_at'
-        ]
-        read_only_fields = ['current_approver_role','created_at','updated_at']
+        fields = '__all__'
 
-    def get_requester_name(self, obj):
-        return obj.requester.full_name if obj.requester else "Unknown"
+    def get_requester(self, obj):
+        return obj.requester.full_name or obj.requester.email
 
-    def get_requesters_car_name(self, obj):
-        if obj.requesters_car:
-            return f"{obj.requesters_car.model} ({obj.requesters_car.license_plate})"
-        return "No Assigned Vehicle"
-    def get_fuel_type(self,obj):
-        if obj.requesters_car and obj.requesters_car.fuel_type:
-            return obj.requesters_car.get_fuel_type_display()
-        return "Unknown"
-    def get_fuel_efficiency(self, obj):
-        if obj.requesters_car and obj.requesters_car.fuel_efficiency is not None:
-            return f"{obj.requesters_car.fuel_efficiency} km/L"
-        return "No fuel efficiency provided for the selected vehicle"
+    def get_employees(self, obj):
+        return [user.full_name or user.email for user in obj.employees.all()]
