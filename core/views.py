@@ -703,9 +703,11 @@ class TransportRequestActionView(APIView):
 
             if not vehicle:
                 return Response({"error": "Invalid vehicle ID."}, status=status.HTTP_400_BAD_REQUEST)
-
-            if TransportRequest.objects.filter(vehicle=vehicle, status='approved').exists():
-                return Response({"error": "Vehicle is already assigned to another request."}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if vehicle.status != Vehicle.AVAILABLE:
+                return Response({"error":"Vehicle is not available"})
+            # if TransportRequest.objects.filter(vehicle=vehicle, status='approved').exists():
+            #     return Response({"error": "Vehicle is already assigned to another request."}, status=status.HTTP_400_BAD_REQUEST)
 
             if not vehicle.driver:
                 return Response({"error": "Selected vehicle does not have an assigned driver."}, status=status.HTTP_400_BAD_REQUEST)
