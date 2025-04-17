@@ -398,7 +398,7 @@ class RefuelingRequestListView(generics.ListAPIView):
             return RefuelingRequest.objects.filter(status="forwarded",current_approver_role=User.BUDGET_MANAGER)
         elif user.role == user.FINANCE_MANAGER:
             # Finance manager sees approved requests
-            return RefuelingRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)
+            return RefuelingRequest.objects.filter(status='approved')
         return RefuelingRequest.objects.filter(requester=user)
 class RefuelingRequestEstimateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -464,7 +464,6 @@ class RefuelingRequestActionView(APIView):
             User.TRANSPORT_MANAGER: User.GENERAL_SYSTEM,
             User.GENERAL_SYSTEM: User.CEO,
             User.CEO: User.BUDGET_MANAGER,
-            User.BUDGET_MANAGER: User.FINANCE_MANAGER,
         }
         return role_hierarchy.get(current_role, None)
 
@@ -521,17 +520,20 @@ class RefuelingRequestActionView(APIView):
                 )
         # ====== APPROVE ACTION ======
         elif action == 'approve':
-            if current_role == User.FINANCE_MANAGER and refueling_request.current_approver_role == User.FINANCE_MANAGER:
+            if current_role == User.BUDGET_MANAGER and refueling_request.current_approver_role == User.BUDGET_MANAGER:
                 # Final approval by Transport Manager after Finance Manager has approved
                 refueling_request.status = 'approved'
                 refueling_request.save()
-
+                
+                finance_manger= User.objects.filter(role=User.FINANCE_MANAGER).first()
                 # # # Notify the original requester of approval
                 NotificationService.send_refueling_notification(
                     'refueling_approved', refueling_request, refueling_request.requester,
                     approver=request.user.full_name
                 )
-
+                NotificationService.send_refueling_notification(
+                   'refueling_approved',refueling_request, finance_manger,approver=request.user.full_name
+                )
             else:
                 return Response({"error": f"{request.user.get_role_display()} cannot approve this request at this stage."}, 
                                 status=status.HTTP_403_FORBIDDEN)
