@@ -220,15 +220,18 @@ class MaintenanceRequest(models.Model):
         ("rejected", "Rejected"),
     ]
 
-    requester = models.ForeignKey(User, on_delete=models.CASCADE)  
-    requesters_car = models.ForeignKey(Vehicle, on_delete=models.CASCADE)  
-    reason = models.TextField()  
-    date = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")  
-    current_approver_role = models.PositiveSmallIntegerField(choices=User.ROLE_CHOICES, default=User.TRANSPORT_MANAGER)  
+    requester = models.ForeignKey(User, on_delete=models.CASCADE)
+    requesters_car = models.ForeignKey(Vehicle, on_delete=models.CASCADE)
+    reason = models.TextField()
+    date = models.DateField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
+    current_approver_role = models.PositiveSmallIntegerField(choices=User.ROLE_CHOICES, default=User.TRANSPORT_MANAGER)
     rejection_message = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)  
-    updated_at = models.DateTimeField(auto_now=True) 
+    maintenance_total_cost = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    maintenance_letter = models.FileField(upload_to="maintenance_letters/", null=True, blank=True)
+    receipt_file = models.FileField(upload_to="maintenance_receipts/", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.requester} - {self.status} - {self.requesters_car}"

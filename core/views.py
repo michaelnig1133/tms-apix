@@ -13,8 +13,8 @@ from core.services import NotificationService, RefuelingEstimator, log_action
 from auth_app.models import User
 from django.db.models import Q
 from django.core.exceptions import ValidationError
-import logging
 from rest_framework.generics import RetrieveAPIView
+import logging
 
 logger = logging.getLogger(__name__)
 class MyAssignedVehicleView(APIView):
@@ -548,14 +548,18 @@ class MaintenanceRequestListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == user.TRANSPORT_MANAGER:
-            return MaintenanceRequest.objects.filter(status='pending')
-        elif user.role == user.CEO:
-            return MaintenanceRequest.objects.filter(status='forwarded',current_approver_role=User.CEO)
-        elif user.role == user.FINANCE_MANAGER:
-            # Finance manager sees approved requests
-            return MaintenanceRequest.objects.filter(status='forwarded',current_approver_role=User.FINANCE_MANAGER)
+        if user.role == User.TRANSPORT_MANAGER:
+            return MaintenanceRequest.objects.filter(status='pending', current_approver_role=User.TRANSPORT_MANAGER)
+        elif user.role == User.GENERAL_SYSTEM:
+            return MaintenanceRequest.objects.filter(status='forwarded', current_approver_role=User.GENERAL_SYSTEM)
+        elif user.role == User.CEO:
+            return MaintenanceRequest.objects.filter(status='forwarded', current_approver_role=User.CEO)
+        elif user.role == User.BUDGET_MANAGER:
+            return MaintenanceRequest.objects.filter(status='forwarded', current_approver_role=User.BUDGET_MANAGER)
+        elif user.role == User.FINANCE_MANAGER:
+            return MaintenanceRequest.objects.filter(status='approved')
         return MaintenanceRequest.objects.filter(requester=user)
+
     
 
 
@@ -563,10 +567,11 @@ class MaintenanceRequestActionView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_next_approver_role(self, current_role):
-        """Determine the next approver based on hierarchy."""
+        """Define approver hierarchy."""
         role_hierarchy = {
-            User.TRANSPORT_MANAGER: User.CEO,
-            User.CEO: User.FINANCE_MANAGER,
+            User.TRANSPORT_MANAGER: User.GENERAL_SYSTEM,
+            User.GENERAL_SYSTEM: User.CEO,
+            User.CEO: User.BUDGET_MANAGER,
         }
         return role_hierarchy.get(current_role, None)
 
@@ -578,14 +583,29 @@ class MaintenanceRequestActionView(APIView):
             return Response({"error": "Invalid action."}, status=status.HTTP_400_BAD_REQUEST)
 
         current_role = request.user.role
-        print("CURRENT ROLE",current_role)
-        logger.info(f"CURRENT ROLE: {current_role}, Action: {action}, Request Status: {maintenance_request.status}")
 
         if current_role != maintenance_request.current_approver_role:
             return Response({"error": "You are not authorized to act on this request."}, status=status.HTTP_403_FORBIDDEN)
 
-        # ====== FORWARD ACTION ======
+        # ===== FORWARD LOGIC =====
         if action == 'forward':
+            # General System MUST submit files and cost before forwarding
+            if current_role == User.GENERAL_SYSTEM:
+                missing = []
+
+                if not maintenance_request.maintenance_letter:
+                    missing.append('maintenance_letter')
+                if not maintenance_request.receipt_file:
+                    missing.append('receipt_file')
+                if maintenance_request.maintenance_total_cost is None:
+                    missing.append('maintenance_total_cost')
+
+                if missing:
+                    return Response(
+                        {"error": f"The following fields must be submitted before forwarding: {', '.join(missing)}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
             next_role = self.get_next_approver_role(current_role)
             if not next_role:
                 return Response({"error": "No further approver available."}, status=status.HTTP_400_BAD_REQUEST)
@@ -594,7 +614,7 @@ class MaintenanceRequestActionView(APIView):
             maintenance_request.current_approver_role = next_role
             maintenance_request.save()
 
-            # # Notify the next approver
+            # Notify next approver(s)
             next_approvers = User.objects.filter(role=next_role, is_active=True)
             for approver in next_approvers:
                 NotificationService.send_maintenance_notification(
@@ -603,7 +623,7 @@ class MaintenanceRequestActionView(APIView):
 
             return Response({"message": "Request forwarded successfully."}, status=status.HTTP_200_OK)
 
-        # ====== REJECT ACTION ======
+        # ===== REJECT LOGIC =====
         elif action == 'reject':
             rejection_message = request.data.get("rejection_message", "").strip()
             if not rejection_message:
@@ -613,7 +633,6 @@ class MaintenanceRequestActionView(APIView):
             maintenance_request.rejection_message = rejection_message
             maintenance_request.save()
 
-            # # Notify requester of rejection
             NotificationService.send_maintenance_notification(
                 'maintenance_rejected', maintenance_request, maintenance_request.requester,
                 rejector=request.user.full_name, rejection_reason=rejection_message
@@ -621,27 +640,69 @@ class MaintenanceRequestActionView(APIView):
 
             return Response({"message": "Request rejected successfully."}, status=status.HTTP_200_OK)
 
-        # ====== APPROVE ACTION ======
+        # ===== APPROVE LOGIC =====
         elif action == 'approve':
-            if current_role == User.FINANCE_MANAGER and maintenance_request.current_approver_role == User.FINANCE_MANAGER:
-                # Final approval by Transport Manager after Finance Manager has approved
+            if current_role == User.BUDGET_MANAGER:
+                # Final approval
                 maintenance_request.status = 'approved'
                 maintenance_request.save()
 
-                # # Notify the original requester of approval
-                NotificationService.send_maintenance_notification(
-                    'maintenance_approved', maintenance_request, maintenance_request.requester,
-                    approver=request.user.full_name
-                )
+                # # Notify requester
+                # NotificationService.send_maintenance_notification(
+                #     'maintenance_approved', maintenance_request, maintenance_request.requester,
+                #     approver=request.user.full_name
+                # )
 
-                return Response({"message": "Request approved successfully."}, status=status.HTTP_200_OK)
+                # # Notify finance manager
+                # finance_managers = User.objects.filter(role=User.FINANCE_MANAGER, is_active=True)
+                # for fm in finance_managers:
+                #     NotificationService.send_maintenance_notification(
+                #         'maintenance_approved', maintenance_request, recipient=fm
+                #     )
+
+                return Response({"message": "Request approved successfully and finance notified."}, status=status.HTTP_200_OK)
 
             else:
-                return Response({"error": f"{request.user.get_role_display()} cannot approve this request at this stage."}, 
-                                status=status.HTTP_403_FORBIDDEN)
-        else:
-             Response({"error": "Unexpected error occurred."}, status=status.HTTP_400_BAD_REQUEST)
-        return  Response({"message": f"Request {action}ed successfully."}, status=status.HTTP_200_OK)
+                return Response({
+                    "error": f"{request.user.get_role_display()} cannot approve this request at this stage."
+                }, status=status.HTTP_403_FORBIDDEN)
+
+        return Response({"error": "Unexpected action or failure."}, status=status.HTTP_400_BAD_REQUEST)
+
+from rest_framework.parsers import MultiPartParser, FormParser
+
+class MaintenanceFileSubmissionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def patch(self, request, request_id):
+        if request.user.role != User.GENERAL_SYSTEM:
+            return Response({"error": "Only General System can perform this action."}, status=status.HTTP_403_FORBIDDEN)
+
+        maintenance_request = get_object_or_404(MaintenanceRequest, id=request_id)
+
+        if maintenance_request.current_approver_role != User.GENERAL_SYSTEM:
+            return Response(
+                {"error": "This request is not currently under General System review."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        letter_file = request.FILES.get('maintenance_letter_file')
+        receipt_file = request.FILES.get('maintenance_receipt_file')
+        total_cost = request.data.get('maintenance_total_cost')
+
+        if not letter_file or not receipt_file or not total_cost:
+            return Response(
+                {"error": "All fields (letter file, receipt file, and total cost) are required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        maintenance_request.maintenance_letter = letter_file
+        maintenance_request.receipt_file = receipt_file
+        maintenance_request.maintenance_total_cost = total_cost
+        maintenance_request.save()
+
+        return Response({"message": "Maintenance files and cost submitted successfully."}, status=status.HTTP_200_OK)
 
 
 class TransportRequestActionView(APIView):
@@ -706,8 +767,6 @@ class TransportRequestActionView(APIView):
             
             if vehicle.status != Vehicle.AVAILABLE:
                 return Response({"error":"Vehicle is not available"})
-            # if TransportRequest.objects.filter(vehicle=vehicle, status='approved').exists():
-            #     return Response({"error": "Vehicle is already assigned to another request."}, status=status.HTTP_400_BAD_REQUEST)
 
             if not vehicle.driver:
                 return Response({"error": "Selected vehicle does not have an assigned driver."}, status=status.HTTP_400_BAD_REQUEST)

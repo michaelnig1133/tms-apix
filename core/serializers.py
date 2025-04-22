@@ -96,33 +96,41 @@ class MaintenanceRequestSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MaintenanceRequest
-        fields = ['id', 'requester','requester_name', 'requesters_car', 'requesters_car_name', 'date', 'reason', 'status', 'current_approver_role']
-        read_only_fields = ['requester','requester_name','requesters_car', 'requesters_car_name', 'status', 'current_approver_role']
-
+        fields = [
+            'id', 'requester', 'requester_name', 'requesters_car', 'requesters_car_name',
+            'date', 'reason', 'status', 'current_approver_role', 'rejection_message',
+            'maintenance_total_cost', 'maintenance_letter', 'receipt_file'
+        ]
+        read_only_fields = [
+            'requester', 'requester_name', 'requesters_car', 'requesters_car_name',
+            'status', 'current_approver_role'
+        ]
 
     def get_requester_name(self, obj):
-        """Return the full name of the requester instead of their ID."""
         return obj.requester.full_name if obj.requester else "Unknown"
 
     def get_requesters_car_name(self, obj):
-        """Return the vehicle model and license plate instead of the car ID."""
-        if obj.requesters_car:
-            return f"{obj.requesters_car.model} ({obj.requesters_car.license_plate})"
-        return "No Assigned Vehicle"
+        return f"{obj.requesters_car.model} ({obj.requesters_car.license_plate})" if obj.requesters_car else "N/A"
+
     def validate(self, data):
-        """Ensure the user has an assigned vehicle."""
+
         user = self.context['request'].user
-        if not hasattr(user, 'assigned_vehicle') or user.assigned_vehicle is None:
-            raise serializers.ValidationError("You do not have an assigned vehicle.")
+        date = data.get('date')
+        if date and date < now().date():
+            raise serializers.ValidationError({"date": "Date cannot be in the past."})
+
+        if self.instance and user.role == User.GENERAL_SYSTEM_EXECUTER:
+            if not data.get('maintenance_letter') or not data.get('receipt_file') or not data.get('maintenance_total_cost'):
+                raise serializers.ValidationError("Maintenance letter, receipt, and total cost are required at this stage.")
+
         return data
 
     def create(self, validated_data):
-        """Automatically set requester, car, and default statuses."""
         user = self.context['request'].user
         validated_data['requester'] = user
         validated_data['requesters_car'] = user.assigned_vehicle
         validated_data['status'] = 'pending'
-        validated_data['current_approver_role'] = user.TRANSPORT_MANAGER  # Default approver
+        validated_data['current_approver_role'] = User.TRANSPORT_MANAGER
         return super().create(validated_data)
 
 class RefuelingRequestSerializer(serializers.ModelSerializer):
