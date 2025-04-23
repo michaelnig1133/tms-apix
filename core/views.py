@@ -14,6 +14,7 @@ from auth_app.models import User
 from django.db.models import Q
 from django.core.exceptions import ValidationError
 from rest_framework.generics import RetrieveAPIView
+from django.core.exceptions import PermissionDenied
 import logging
 
 logger = logging.getLogger(__name__)
@@ -560,9 +561,30 @@ class MaintenanceRequestListView(generics.ListAPIView):
             return MaintenanceRequest.objects.filter(status='approved')
         return MaintenanceRequest.objects.filter(requester=user)
 
+class MaintenanceRequestDetailView(generics.RetrieveAPIView):
+    queryset = MaintenanceRequest.objects.all()
+    serializer_class = MaintenanceRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        request_id = self.kwargs.get("pk")
+        obj = get_object_or_404(MaintenanceRequest, id=request_id)
+
+        user = self.request.user
+
+        allowed_roles = [
+            User.TRANSPORT_MANAGER,
+            User.GENERAL_SYSTEM,
+            User.CEO,
+            User.BUDGET_MANAGER,
+            User.FINANCE_MANAGER
+        ]
+
+        if user != obj.requester and user.role not in allowed_roles:
+            raise PermissionDenied("You do not have permission to view this maintenance request.")
+
+        return obj
     
-
-
 class MaintenanceRequestActionView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

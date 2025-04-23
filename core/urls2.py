@@ -10,6 +10,7 @@ from core.views import (
     MaintenanceFileSubmissionView,
     MaintenanceRequestActionView,
     MaintenanceRequestCreateView,
+    MaintenanceRequestDetailView,
     MaintenanceRequestListView,
     RefuelingRequestActionView,
     RefuelingRequestCreateView,
@@ -22,6 +23,7 @@ from core.views import (
 urlpatterns = [
    path('create/', MaintenanceRequestCreateView.as_view(), name='create-maintenance-request'),
    path('list/',MaintenanceRequestListView.as_view(), name= "list-maintenance-request"),
+   path('<int:pk>/',MaintenanceRequestDetailView.as_view(),name="maintenance-request-detail"),
    path('<int:request_id>/action/',MaintenanceRequestActionView.as_view(),name="maintenance-request-action"),
    path('<int:request_id>/submit-files/', MaintenanceFileSubmissionView.as_view(), name='submit-maintenance-files')
 ]
