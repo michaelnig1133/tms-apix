@@ -5,6 +5,8 @@ from core.urls import urlpatterns as core_urls
 from core.urls2 import urlpatterns as maintenance_urls
 from core.urls2 import urlpatterns_refueling as refueling_urls
 from core.urls2 import urlpatterns_highcost as highcost_urls
+from django.conf import settings
+from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 
 from core.views import AvailableDriversView, AvailableVehiclesListView, MyAssignedVehicleView, VehicleViewSet
@@ -22,4 +24,4 @@ urlpatterns = [
     path("highcost-requests/",include(highcost_urls)),
 
     path("",include(router.urls))
-]
+]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
