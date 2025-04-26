@@ -3,7 +3,7 @@ from django.utils import timezone
 from datetime import timedelta
 from auth_app.models import User
 from django.contrib.contenttypes.models import ContentType
-from .models import ActionLog, HighCostTransportRequest, RefuelingRequest
+from .models import ActionLog, HighCostTransportRequest, RefuelingRequest, Vehicle
 from core.models import MaintenanceRequest, TransportRequest, Notification
 
 
@@ -105,7 +105,13 @@ class NotificationService:
             'title': _("High-Cost Transport Request Approved"),
             'message': _("Your high-cost transport request #{request_id} has been approved by {approver}."),
             'priority': 'normal'
-        }    
+        },
+        'service_due': {
+            'title': _("Service Due Notification"),
+            'message': _("Vehicle {vehicle_model} (Plate: {license_plate}) has reached {kilometer} km. "
+                        "It now requires servicing. Please schedule maintenance as soon as possible."),
+            'priority': 'high'
+},  
     }
 
     @classmethod
@@ -253,6 +259,44 @@ class NotificationService:
                 metadata=request_data
             )
             return notification
+    @classmethod
+    def send_service_notification(cls, vehicle: Vehicle, recipients: list[User], notification_type: str = 'service_due'):
+        """
+        Send service due notifications to a list of recipients (e.g., driver, transport manager, general system user).
+
+        Args:
+            vehicle (Vehicle): The vehicle that requires service.
+            recipients (list[User]): List of users to notify.
+            notification_type (str): Type of the notification. Defaults to 'service_due'.
+
+        Raises:
+            ValueError: If the notification template for the given type is missing.
+        """
+        template = cls.NOTIFICATION_TEMPLATES.get(notification_type)
+        if not template:
+            # Log this properly in real applications
+            raise ValueError(f"Missing '{notification_type}' template in NOTIFICATION_TEMPLATES.")
+
+        request_data = {
+            'vehicle_model': vehicle.model,
+            'license_plate': vehicle.license_plate,
+            'kilometer': vehicle.total_kilometers
+        }
+
+        notifications = [
+            Notification(
+                recipient=recipient,
+                vehicle=vehicle,
+                notification_type=notification_type,
+                title=template['title'],
+                message=template['message'].format(**request_data),
+                priority=template['priority'],
+                action_required=True,
+                metadata=request_data
+            ) for recipient in recipients
+        ]
+
+        Notification.objects.bulk_create(notifications)
 
     @classmethod
     def mark_as_read(cls, notification_id: int) -> None:

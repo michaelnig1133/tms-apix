@@ -9,7 +9,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 
-from core.views import AvailableDriversView, AvailableVehiclesListView, MyAssignedVehicleView, VehicleViewSet
+from core.views import AddMonthlyKilometersView, AvailableDriversView, AvailableVehiclesListView, MyAssignedVehicleView, VehicleViewSet
 
 router = DefaultRouter()
 router.register(r'vehicles',VehicleViewSet)
@@ -22,6 +22,6 @@ urlpatterns = [
     path("maintenance-requests/",include(maintenance_urls)),
     path("refueling_requests/",include(refueling_urls)),
     path("highcost-requests/",include(highcost_urls)),
-
+    path("vehicles/<int:vehicle_id>/add-monthly-kilometers/",AddMonthlyKilometersView.as_view(),name="add-monthly-kilometers"),
     path("",include(router.urls))
 ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

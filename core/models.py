@@ -49,6 +49,8 @@ class Vehicle(models.Model):
     rental_company = models.CharField(max_length=255, blank=True, null=True) 
     status = models.CharField(max_length=20, choices=VEHICLE_STATUS_CHOICES, default=AVAILABLE)
     fuel_type = models.CharField(max_length=10, choices=FUEL_TYPE_CHOICES,default=BENZENE)
+    total_kilometers = models.FloatField(default=0.0)  # Lifetime mileage
+    last_service_kilometers = models.FloatField(default=0.0)  # km at last service
 
     fuel_efficiency = models.DecimalField(
         max_digits=5,
@@ -94,6 +96,15 @@ class Vehicle(models.Model):
         self.status = self.MAINTENANCE
         self.save()
 
+class MonthlyKilometerLog(models.Model):
+    vehicle = models.ForeignKey(Vehicle, on_delete=models.CASCADE)
+    month = models.CharField(max_length=20)
+    kilometers_driven = models.FloatField()
+    recorded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('vehicle', 'month')
 
 class TransportRequest(models.Model):
     STATUS_CHOICES = [
@@ -175,6 +186,7 @@ class Notification(models.Model):
     maintenance_request = models.ForeignKey("MaintenanceRequest", null=True, blank=True, on_delete=models.CASCADE,related_name='notifications')
     refueling_request=models.ForeignKey("RefuelingRequest",null=True , blank=True, on_delete=models.CASCADE,related_name='notifications')
     highcost_request = models.ForeignKey("HighCostTransportRequest", null=True, blank=True, on_delete=models.CASCADE, related_name='notifications')
+    vehicle = models.ForeignKey(Vehicle, null=True, blank=True, on_delete=models.CASCADE, related_name='notifications')
     notification_type = models.CharField(max_length=100, choices=NOTIFICATION_TYPES)
     title = models.CharField(max_length=200)
     message = models.TextField()

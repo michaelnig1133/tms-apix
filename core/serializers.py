@@ -1,9 +1,10 @@
+from datetime import datetime
 from rest_framework import serializers
 
 from auth_app.models import User
 from django.utils.timezone import now 
 from auth_app.serializers import UserDetailSerializer
-from core.models import HighCostTransportRequest, MaintenanceRequest, RefuelingRequest, TransportRequest, Vehicle, Notification
+from core.models import HighCostTransportRequest, MaintenanceRequest, MonthlyKilometerLog, RefuelingRequest, TransportRequest, Vehicle, Notification
 
 class TransportRequestSerializer(serializers.ModelSerializer):
     requester = serializers.ReadOnlyField(source='requester.get_full_name')
@@ -239,3 +240,32 @@ class HighCostTransportRequestDetailSerializer(serializers.ModelSerializer):
 
     def get_employees(self, obj):
         return [user.full_name or user.email for user in obj.employees.all()]
+
+class MonthlyKilometerLogSerializer(serializers.ModelSerializer):
+    kilometers_driven = serializers.IntegerField(min_value=1)
+    month = serializers.CharField(max_length=30)
+
+    class Meta:
+        model = MonthlyKilometerLog
+        fields = ['kilometers_driven', 'month']
+
+    def validate_month(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Month cannot be blank.")
+
+        try:
+            
+            datetime.strptime(value, "%B %Y")
+        except ValueError:
+            raise serializers.ValidationError("Month must be in 'Month YYYY' format (e.g., 'April 2025').")
+        
+        return value
+
+    def validate(self, attrs):
+        vehicle_id = self.context.get('view').kwargs.get('vehicle_id')
+        month = attrs.get('month')
+
+        if MonthlyKilometerLog.objects.filter(vehicle_id=vehicle_id, month=month).exists():
+            raise serializers.ValidationError(f"Kilometers for {month} already recorded for this vehicle.")
+
+        return attrs

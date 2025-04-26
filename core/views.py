@@ -6,9 +6,9 @@ from rest_framework.response import Response
 from auth_app.permissions import IsDepartmentManager, IsTransportManager
 from auth_app.serializers import UserDetailSerializer
 from core import serializers
-from core.models import HighCostTransportRequest, MaintenanceRequest, RefuelingRequest, TransportRequest, Vehicle, Notification
+from core.models import HighCostTransportRequest, MaintenanceRequest, MonthlyKilometerLog, RefuelingRequest, TransportRequest, Vehicle, Notification
 from core.permissions import IsAllowedVehicleUser
-from core.serializers import AssignedVehicleSerializer, HighCostTransportRequestDetailSerializer, HighCostTransportRequestSerializer, MaintenanceRequestSerializer, RefuelingRequestDetailSerializer, RefuelingRequestSerializer, TransportRequestSerializer, NotificationSerializer, VehicleSerializer
+from core.serializers import AssignedVehicleSerializer, HighCostTransportRequestDetailSerializer, HighCostTransportRequestSerializer, MaintenanceRequestSerializer, MonthlyKilometerLogSerializer, RefuelingRequestDetailSerializer, RefuelingRequestSerializer, TransportRequestSerializer, NotificationSerializer, VehicleSerializer
 from core.services import NotificationService, RefuelingEstimator, log_action
 from auth_app.models import User
 from django.db.models import Q
@@ -342,10 +342,21 @@ class TransportRequestListView(generics.ListAPIView):
 class MaintenanceRequestCreateView(generics.CreateAPIView):
     serializer_class = MaintenanceRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
+    ALLOWED_ROLES = [
+        User.DEPARTMENT_MANAGER,
+        User.FINANCE_MANAGER,
+        User.TRANSPORT_MANAGER,
+        User.CEO,
+        User.DRIVER,
+        User.GENERAL_SYSTEM,
+        User.BUDGET_MANAGER,
+    ]
 
     def perform_create(self, serializer):
         """Override to set requester and their assigned vehicle automatically."""
         user = self.request.user
+        if user.role not in self.ALLOWED_ROLES:
+            raise serializers.ValidationError({"error": "You are not authorized to submit a refueling request."})
         if not hasattr(user, 'assigned_vehicle') or user.assigned_vehicle is None:
             raise serializers.ValidationError({"error": "You do not have an assigned vehicle."})
 
@@ -369,9 +380,21 @@ class RefuelingRequestCreateView(generics.CreateAPIView):
     serializer_class = RefuelingRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    ALLOWED_ROLES = [
+        User.DEPARTMENT_MANAGER,
+        User.FINANCE_MANAGER,
+        User.TRANSPORT_MANAGER,
+        User.CEO,
+        User.DRIVER,
+        User.GENERAL_SYSTEM,
+        User.BUDGET_MANAGER,
+    ]
+
     def perform_create(self, serializer):
         """Set the requester and default approver before saving."""
         user = self.request.user
+        if user.role not in self.ALLOWED_ROLES:
+            raise serializers.ValidationError({"error": "You are not authorized to submit a refueling request."})
         if not hasattr(user, 'assigned_vehicle') or user.assigned_vehicle is None:
             raise serializers.ValidationError({"error": "You do not have an assigned vehicle."})
         transport_manager = User.objects.filter(role=User.TRANSPORT_MANAGER, is_active=True).first()
@@ -927,3 +950,44 @@ class NotificationUnreadCountView(APIView):
         """
         count = NotificationService.get_unread_count(request.user.id)
         return Response({'unread_count': count})
+       
+class AddMonthlyKilometersView(generics.CreateAPIView):
+    serializer_class = MonthlyKilometerLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        vehicle_id = self.kwargs.get('vehicle_id')
+        vehicle = get_object_or_404(Vehicle, id=vehicle_id)
+
+        kilometers = serializer.validated_data['kilometers_driven']
+        month = serializer.validated_data['month']
+
+        # Save the log
+        MonthlyKilometerLog.objects.create(
+            vehicle=vehicle,
+            kilometers_driven=kilometers,
+            month=month,
+            recorded_by=self.request.user
+        )
+
+        # Update vehicle total kilometers
+        vehicle.total_kilometers += kilometers
+        vehicle.save()
+
+        # Check service threshold
+        if (vehicle.total_kilometers - vehicle.last_service_kilometers) >= 5000:
+            self.send_service_notification(vehicle)
+              
+        transport_managers = User.objects.filter(role=User.TRANSPORT_MANAGER, is_active=True)
+        general_systems = User.objects.filter(role=User.GENERAL_SYSTEM, is_active=True)
+        driver = vehicle.driver  # or vehicle.assigned_driver depending on your model
+
+        if not driver:
+            raise ValueError("Vehicle has no assigned driver.")
+
+        recipients = list(transport_managers) + list(general_systems) + [driver]
+
+        NotificationService.send_service_notification(
+            vehicle=vehicle,
+            recipients=recipients
+        )
