@@ -17,6 +17,8 @@ from rest_framework.generics import RetrieveAPIView
 from django.core.exceptions import PermissionDenied
 from rest_framework import serializers  
 from rest_framework.exceptions import ValidationError  
+from rest_framework.parsers import MultiPartParser, FormParser
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -357,8 +359,8 @@ class MaintenanceRequestCreateView(generics.CreateAPIView):
         user = self.request.user
         if user.role not in self.ALLOWED_ROLES:
             raise serializers.ValidationError({"error": "You are not authorized to submit a refueling request."})
-        if not hasattr(user, 'assigned_vehicle') or user.assigned_vehicle is None:
-            raise serializers.ValidationError({"error": "You do not have an assigned vehicle."})
+        # if not hasattr(user, 'assigned_vehicle') or user.assigned_vehicle is None:
+        #     raise serializers.ValidationError({"error": "You do not have an assigned vehicle."})
 
         transport_manager = User.objects.filter(role=User.TRANSPORT_MANAGER, is_active=True).first()
 
@@ -426,6 +428,14 @@ class RefuelingRequestListView(generics.ListAPIView):
             # Finance manager sees approved requests
             return RefuelingRequest.objects.filter(status='approved')
         return RefuelingRequest.objects.filter(requester=user)
+    
+class RefuelingRequestOwnListView(generics.ListAPIView):
+    serializer_class = MaintenanceRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        return TransportRequest.objects.filter(requester=user)
 class RefuelingRequestEstimateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -584,6 +594,14 @@ class MaintenanceRequestListView(generics.ListAPIView):
             return MaintenanceRequest.objects.filter(status='forwarded', current_approver_role=User.BUDGET_MANAGER)
         elif user.role == User.FINANCE_MANAGER:
             return MaintenanceRequest.objects.filter(status='approved')
+        return MaintenanceRequest.objects.none()
+    
+class MaintenanceRequestOwnListView(generics.ListAPIView):
+    serializer_class = MaintenanceRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
         return MaintenanceRequest.objects.filter(requester=user)
 
 class MaintenanceRequestDetailView(generics.RetrieveAPIView):
@@ -716,7 +734,6 @@ class MaintenanceRequestActionView(APIView):
 
         return Response({"error": "Unexpected action or failure."}, status=status.HTTP_400_BAD_REQUEST)
 
-from rest_framework.parsers import MultiPartParser, FormParser
 
 class MaintenanceFileSubmissionView(APIView):
     permission_classes = [permissions.IsAuthenticated]

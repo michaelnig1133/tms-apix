@@ -12,6 +12,7 @@ from core.views import (
     MaintenanceRequestCreateView,
     MaintenanceRequestDetailView,
     MaintenanceRequestListView,
+    MaintenanceRequestOwnListView,
     RefuelingRequestActionView,
     RefuelingRequestCreateView,
     RefuelingRequestDetailView,
@@ -25,7 +26,8 @@ urlpatterns = [
    path('list/',MaintenanceRequestListView.as_view(), name= "list-maintenance-request"),
    path('<int:pk>/',MaintenanceRequestDetailView.as_view(),name="maintenance-request-detail"),
    path('<int:request_id>/action/',MaintenanceRequestActionView.as_view(),name="maintenance-request-action"),
-   path('<int:request_id>/submit-files/', MaintenanceFileSubmissionView.as_view(), name='submit-maintenance-files')
+   path('<int:request_id>/submit-files/', MaintenanceFileSubmissionView.as_view(), name='submit-maintenance-files'),
+   path('my/',MaintenanceRequestOwnListView.as_view(),name="maintenance-request-own")
 ]
 
 urlpatterns_refueling = [
