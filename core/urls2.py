@@ -18,6 +18,7 @@ from core.views import (
     RefuelingRequestDetailView,
     RefuelingRequestEstimateView,
     RefuelingRequestListView,
+    RefuelingRequestOwnListView,
     TripCompletionView,
 )
 
@@ -36,6 +37,7 @@ urlpatterns_refueling = [
    path('<int:pk>/',RefuelingRequestDetailView.as_view(),name="refueling-request-detail"),
    path('<int:request_id>/estimate/',RefuelingRequestEstimateView.as_view(),name="estimate-refueling-request"),
    path('<int:request_id>/action/',RefuelingRequestActionView.as_view(),name="refueling-request-action"),
+   path('my/',RefuelingRequestOwnListView.as_view(),name="refueling-request-own"),
 ]
 
 urlpatterns_highcost = [

@@ -430,12 +430,12 @@ class RefuelingRequestListView(generics.ListAPIView):
         return RefuelingRequest.objects.filter(requester=user)
     
 class RefuelingRequestOwnListView(generics.ListAPIView):
-    serializer_class = MaintenanceRequestSerializer
+    serializer_class = RefuelingRequestSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         user = self.request.user
-        return TransportRequest.objects.filter(requester=user)
+        return RefuelingRequest.objects.filter(requester=user)
 class RefuelingRequestEstimateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
