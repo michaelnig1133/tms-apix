@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
 COPY Pipfile Pipfile.lock /app/
 
 # Install dependencies via Pipenv
-RUN pip install --upgrade pip && pip install pipenv && pipenv install --deploy --system
+RUN pip install --upgrade pip && pip install pipenv && pipenv install  --system
 
 # Copy the entire project
 COPY . /app/
