@@ -5,6 +5,7 @@ FROM python:3.11
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=off \
     PIPENV_VENV_IN_PROJECT=1
+    PATH="/usr/local/bin:$PATH"
 
 # Set the working directory in the container
 WORKDIR /app
