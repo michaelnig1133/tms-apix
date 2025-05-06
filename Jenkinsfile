@@ -9,7 +9,7 @@ pipeline {
         SONARQUBE_CREDENTIALS = 'gatepass_sonarqube'  // Jenkins credential ID for SonarQube
         SONARQUBE_URL = "http://sonar:9000"  // SonarQube server URL
         //PROJECT_KEY = "gatepassvms"  // Unique key for your SonarQube project
-        EMAIL_RECIPIENTS = ''
+        EMAIL_RECIPIENTS = 'michaelnigusu030@gmail.com'
        
        
     }
