@@ -18,7 +18,7 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/aksum3991/tms-api.git'
+                git branch: 'main', url: 'git@github.com:michaelnig1133/tms-apix.git'
             }
         }
 
