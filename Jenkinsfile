@@ -28,6 +28,7 @@ pipeline {
                       sh ''' #!/bin/bash
                         echo "Building Docker image..."
                         export COMPOSE_BAKE=true
+                        docker compose build --no-cache
                         docker compose up -d
 
                       '''
