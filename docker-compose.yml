@@ -1,18 +1,61 @@
 # version: "3.8"
 
+# services:
+#   web:
+#     build: .
+#     container_name: tms_backend
+#     command: gunicorn core.wsgi:application --bind 0.0.0.0:8000
+#     volumes:
+#       - .:/app
+#     ports:
+#       - "8000:8000"
+#     depends_on:
+#       - db
+#     env_file:
+#       - .env
+
+#   db:
+#     image: postgres:15
+#     container_name: tms_db
+#     restart: always
+#     environment:
+#       POSTGRES_DB: tms_database
+#       POSTGRES_USER: tms_user
+#       POSTGRES_PASSWORD: tms_password
+#     ports:
+#       - "5432:5432"
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+
+# volumes:
+#   postgres_data:
+
+
+
+
+
+
+
+
+version: "3.8"
+
 services:
   web:
     build: .
     container_name: tms_backend
-    command: gunicorn core.wsgi:application --bind 0.0.0.0:8000
+    command: gunicorn tms_backend.wsgi:application --bind 0.0.0.0:8000
     volumes:
       - .:/app
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+    restart: always
     env_file:
       - .env
+    networks:
+      - tms_net
 
   db:
     image: postgres:15
@@ -26,6 +69,18 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - tms_net
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "tms_user" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  tms_net:
+    external: true
 
 volumes:
   postgres_data:
+
