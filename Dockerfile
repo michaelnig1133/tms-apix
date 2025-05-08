@@ -91,9 +91,10 @@ RUN apt-get update && \
 
 COPY Pipfile Pipfile.lock /app/
 
-RUN pip install --upgrade pip && \
-    pip install pipenv && \
-    pipenv install --deploy --system
+# RUN pip install --upgrade pip && \
+#     pip install pipenv && \
+#     pipenv install --deploy --system
+RUN pip install --upgrade pip && pip install pipenv && pipenv lock --clear && pipenv install --deploy --system
 
 COPY . /app/
 
